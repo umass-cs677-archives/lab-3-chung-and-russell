@@ -1,0 +1,6 @@
+Server,Machine,IP,Port
+Order,elnux1,128.119.243.147,5001
+Catalog,elnux2,128.119.243.164,5002
+Frontend,elnux3,128.119.243.168,5003
+Client,elnux7,128.119.243.175,5004
+

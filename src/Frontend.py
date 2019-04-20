@@ -2,7 +2,7 @@ from flask import Flask
 import requests
 import csv
 import random
-from src.utils import string_builder
+from utils import string_builder
 from typing import Set
 
 app = Flask("frontend")

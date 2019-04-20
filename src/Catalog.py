@@ -3,7 +3,7 @@ from threading import Lock
 from flask import Flask, redirect, jsonify, abort, g
 import csv
 import sys
-from src.utils import string_builder
+from utils import string_builder
 
 SERVER_CONFIG = 'server_config'
 with open(SERVER_CONFIG, mode ='r') as server_file:

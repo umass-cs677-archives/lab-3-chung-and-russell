@@ -53,30 +53,36 @@ def search(topic: str) -> str:
         search_result.append(str(books["items"][book]))
         search_result.append("\n")
 
-    result = "".join(search_result)
-    cache[topic] = result
+    search_result = "".join(search_result)
+    cache[topic] = search_result
 
-    return "".join(search_result)
+    return search_result
 
 
-# @app.route("/lookup/<item_number>")
-# def lookup(item_number):
-#     books = requests.get(CATALOG_QUERY + item_number).json()
-#
-#     search_result = []
-#
-#     for book in books:
-#         search_result.append("Name: ")
-#         search_result.append(book)
-#         search_result.append("\n")
-#         search_result.append("Cost: ")
-#         search_result.append(str(books[book]["COST"]))
-#         search_result.append("\n")
-#         search_result.append("Quantity: ")
-#         search_result.append(str(books[book]["QUANTITY"]))
-#         search_result.append("\n")
-#
-#     return "".join(search_result)
+@app.route("/lookup/<item_number>")
+def lookup(item_number):
+    if item_number in cache:
+        return cache[item_number]
+    catalog_server_location = get_server_location(catalog_replicas)
+    query = string_builder([], catalog_server_location, "/query/", item_number)
+    books = requests.get(query).json()
+
+    search_result = []
+
+    for book in books:
+        search_result.append("Name: ")
+        search_result.append(book)
+        search_result.append("\n")
+        search_result.append("Cost: ")
+        search_result.append(str(books[book]["COST"]))
+        search_result.append("\n")
+        search_result.append("Quantity: ")
+        search_result.append(str(books[book]["QUANTITY"]))
+        search_result.append("\n")
+
+    search_result = "".join(search_result)
+    cache[item_number] = search_result
+    return search_result
 #
 #
 # @app.route("/buy/<catalog_id>")

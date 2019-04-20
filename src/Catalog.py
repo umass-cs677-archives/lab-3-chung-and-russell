@@ -1,37 +1,10 @@
 import sqlite3
-from threading import Lock
 from flask import Flask, redirect, jsonify, abort, g
-import csv
 import sys
-from utils import string_builder
-
-SERVER_CONFIG = 'server_config'
-with open(SERVER_CONFIG, mode ='r') as server_file:
-    server_dict = {}
-    csv_reader = csv.DictReader(server_file)
-    for row in csv_reader:
-        server_name = row['Server']
-        server_dict[server_name] = {'Machine': row['Machine'],
-                                    'IP': row['IP'],
-                                    'Port': row['Port']}
-
-    CATALOG_PORT = server_dict['Catalog_0']['Port']
+from utils import *
 
 app = Flask("catalog")
-
-def _get_locks():
-    """"
-    hard code locks for each row in the database
-    """
-    locks = []
-
-    for i in range(4):
-        locks.append(Lock())
-
-    return locks
-
-
-locks = _get_locks()
+locks = get_locks(7)
 
 
 def get_db(id):
@@ -180,5 +153,6 @@ def update(item_number, field, operation, number):
 
 if __name__ == "__main__":
     app.config["db_id"] = sys.argv[1]
-    app.run(port = CATALOG_PORT)
+    catalog_ip, catalog_port = get_id_port('server_config', "Catalog", app.config.get("db_id"))
+    app.run(port=catalog_port)
 

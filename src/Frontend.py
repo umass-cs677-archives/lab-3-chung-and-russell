@@ -3,6 +3,7 @@ import requests
 import csv
 import random
 from src.utils import string_builder
+from typing import Set
 
 app = Flask("frontend")
 
@@ -11,16 +12,20 @@ SERVER_CONFIG = 'server_config'
 #######################################################
 ############### Accessing Catalog server  #############
 #######################################################
+avail_catalog_replicas = set()
 
 with open(SERVER_CONFIG, mode ='r') as server_file:
     server_dict = {}
     csv_reader = csv.DictReader(server_file)
     for row in csv_reader:
         server_name = row['Server']
+        if "Catalog" in server_name:
+            avail_catalog_replicas.add(server_name)
+
         server_dict[server_name] = {'Machine': row['Machine'],
                                     'IP': row['IP'],
                                     'Port': row['Port']}
-    
+
 #     CATALOG_PORT = server_dict['Catalog']['Port']
 #     ORDER_PORT = server_dict['Order']['Port']
 #     FRONTEND_PORT = server_dict['Frontend']['Port']
@@ -29,27 +34,25 @@ with open(SERVER_CONFIG, mode ='r') as server_file:
 # CATALOG_QUERY = 'http://128.119.243.164:' + CATALOG_PORT + '/query/'
 # ORDER_BUY = 'http://128.119.243.147:' + ORDER_PORT + '/buy/'
 
-N_SERVER_REPLICAS = 2
 cache = {}
 
 
-def get_server_location(server_type : str) -> str:
+def get_server_location(replicas: Set[str]):
     """
     Load balancing between replicas
 
-    :param server_type: type of the server. Either CATALOG or ORDER
+    :param replicas: list of available replicas
     :return: The location of one of the replicas for the specified server type
     """
     # The idea is that picking a random replica will even out the loading
     # on all replicas in long term
-    replica_n = random.randint(0, N_SERVER_REPLICAS - 1)
     server_location = ["http://"]
-    server_name = server_type + "_" + str(replica_n)
-    server_ip = server_dict[server_name]["IP"]
-    server_port = server_dict[server_name]["Port"]
-    string_builder(server_location, server_ip, ":", server_port, "/")
+    name = random.sample(replicas, 1)[0]
+    server_ip = server_dict[name]["IP"]
+    server_port = server_dict[name]["Port"]
+    server_location = string_builder(server_location, server_ip, ":", server_port, "/")
 
-    return "".join(server_location)
+    return server_location
 
 
 @app.route("/invalidate/<entry_key>")
@@ -65,7 +68,7 @@ def search(topic: str) -> str:
     if topic in cache:
         return cache[topic]
 
-    catalog_server_location = get_server_location("Catalog")
+    catalog_server_location = get_server_location(avail_catalog_replicas)
     books = requests.get(catalog_server_location + topic).json()
 
     search_result = []
@@ -114,4 +117,4 @@ def search(topic: str) -> str:
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0')
+    app.run(host='0.0.0.0', port=5001)

@@ -2,6 +2,8 @@ import sqlite3
 from threading import Lock
 from flask import Flask, redirect, jsonify, abort, g
 import csv
+import sys
+from src.utils import string_builder
 
 SERVER_CONFIG = 'server_config'
 with open(SERVER_CONFIG, mode ='r') as server_file:
@@ -13,10 +15,9 @@ with open(SERVER_CONFIG, mode ='r') as server_file:
                                     'IP': row['IP'],
                                     'Port': row['Port']}
 
-    CATALOG_PORT = server_dict['Catalog']['Port']
+    CATALOG_PORT = server_dict['Catalog_0']['Port']
 
 app = Flask("catalog")
-DATABASE = 'inventory.db'
 
 def _get_locks():
     """"
@@ -29,12 +30,16 @@ def _get_locks():
 
     return locks
 
+
 locks = _get_locks()
 
-def get_db():
+
+def get_db(id):
+    database = ["inventory"]
+    database = string_builder(database, "_", id, ".db")
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
+        db = g._database = sqlite3.connect(database)
 
     def make_dicts(cursor, row):
         return dict((cursor.description[idx][0], value)
@@ -44,11 +49,13 @@ def get_db():
 
     return db
 
+
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
+
 
 def _pair_results(query_results, fields_to_pair):
     """
@@ -73,9 +80,10 @@ def _pair_results(query_results, fields_to_pair):
 
     return paired_dict
 
+
 def _delete_keys(dict, keys):
     """
-    Delete specifed keys from the dictionary
+    Delete specified keys from the dictionary
     """
     for key in keys:
         del dict[key]
@@ -88,7 +96,7 @@ def _delete_keys(dict, keys):
 def query(**kwargs):
 
     key = list(kwargs)[0]
-    cursor = get_db().cursor()
+    cursor = get_db(app.config.get("db_id")).cursor()
 
     if key == "topic":
         topic = (kwargs[key].replace("_", " "),)
@@ -107,6 +115,7 @@ def query(**kwargs):
 
     return response
 
+
 @app.route("/update/<item_number>/<field>/<operation>/<int:number>", methods=['GET','PUT'])
 def update(item_number, field, operation, number):
     """
@@ -114,7 +123,8 @@ def update(item_number, field, operation, number):
     Update field using given operation and number. A successful update will automatically
     redirect to /query/item_number and displays the updated item info
 
-    :param name: name of the field to update
+    :param item_number: item to update
+    :param field: name of the field to update
     :param operation: three operations are supported. increase, decrease, and set
     :param number: number to be used in operation
     :return: updated json object
@@ -123,7 +133,8 @@ def update(item_number, field, operation, number):
     valid_fields = ["cost", "quantity"]
     valid_operation = {"increase":"+", "decrease":"-", "set":""}
 
-    #Checking fields for validation also prevents SQL injection attack, so it's safe to concatenate <field> to the query
+    # Checking fields for validation also prevents SQL injection attack,
+    # so it's safe to concatenate <field> to the query
     if field not in valid_fields:
         abort(400)
 
@@ -133,9 +144,8 @@ def update(item_number, field, operation, number):
     if number < 0:
         abort(400)
 
-    conn = get_db()
+    conn = app.config.get("db_id")
     cursor = conn.cursor()
-
     success = True
 
     with locks[int(item_number) - 1]:
@@ -167,7 +177,8 @@ def update(item_number, field, operation, number):
 
     return response
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
+    app.config["db_id"] = sys.argv[1]
     app.run(host='0.0.0.0', port = CATALOG_PORT)
 

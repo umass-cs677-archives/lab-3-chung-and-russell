@@ -1,39 +1,12 @@
 from flask import Flask
 import requests
-import csv
 import random
-from utils import string_builder
+from utils import *
 from typing import Set
 
 app = Flask("frontend")
-
-SERVER_CONFIG = 'server_config'
-
-#######################################################
-############### Accessing Catalog server  #############
-#######################################################
-avail_catalog_replicas = set()
-
-with open(SERVER_CONFIG, mode ='r') as server_file:
-    server_dict = {}
-    csv_reader = csv.DictReader(server_file)
-    for row in csv_reader:
-        server_name = row['Server']
-        if "Catalog" in server_name:
-            avail_catalog_replicas.add(server_name)
-
-        server_dict[server_name] = {'Machine': row['Machine'],
-                                    'IP': row['IP'],
-                                    'Port': row['Port']}
-
-#     CATALOG_PORT = server_dict['Catalog']['Port']
-#     ORDER_PORT = server_dict['Order']['Port']
-#     FRONTEND_PORT = server_dict['Frontend']['Port']
-#
-#
-# CATALOG_QUERY = 'http://128.119.243.164:' + CATALOG_PORT + '/query/'
-# ORDER_BUY = 'http://128.119.243.147:' + ORDER_PORT + '/buy/'
-
+server_dict = get_server_dict("server_config")
+catalog_replicas = get_replicas(server_dict, "Catalog")
 cache = {}
 
 
@@ -50,7 +23,7 @@ def get_server_location(replicas: Set[str]):
     name = random.sample(replicas, 1)[0]
     server_ip = server_dict[name]["IP"]
     server_port = server_dict[name]["Port"]
-    server_location = string_builder(server_location, server_ip, ":", server_port, "/")
+    server_location = string_builder(server_location, server_ip, ":", server_port)
 
     return server_location
 
@@ -68,9 +41,9 @@ def search(topic: str) -> str:
     if topic in cache:
         return cache[topic]
 
-    catalog_server_location = get_server_location(avail_catalog_replicas)
-    books = requests.get(catalog_server_location + topic).json()
-
+    catalog_server_location = get_server_location(catalog_replicas)
+    query = string_builder([], catalog_server_location, "/query/", topic)
+    books = requests.get(query).json()
     search_result = []
 
     for book in books["items"]:
@@ -117,4 +90,4 @@ def search(topic: str) -> str:
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5001)
+    app.run(port=5001)

@@ -52,18 +52,16 @@ def get_server_location(server_type : str) -> str:
     return "".join(server_location)
 
 
-@app.route("/invalidate/<topic>")
-@app.route("/invalidate/<int:item_number>")
-def invalidate(**kwargs):
+@app.route("/invalidate/<entry_key>")
+def invalidate(entry_key):
     """
-    Delete specify entry from the cache
+    Delete specify entry from the cache. It could be a topic name or an item number
     """
-    key = list(kwargs)[0]
-    del cache[kwargs[key]]
+    del cache[entry_key]
 
 
-@app.route("/search/<topic>", methods = ["GET"])
-def search(topic : str) -> str:
+@app.route("/search/<topic>", methods=["GET"])
+def search(topic: str) -> str:
     if topic in cache:
         return cache[topic]
 

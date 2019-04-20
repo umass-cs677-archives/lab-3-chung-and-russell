@@ -180,5 +180,5 @@ def update(item_number, field, operation, number):
 
 if __name__ == "__main__":
     app.config["db_id"] = sys.argv[1]
-    app.run(host='0.0.0.0', port = CATALOG_PORT)
+    app.run(port = CATALOG_PORT)
 

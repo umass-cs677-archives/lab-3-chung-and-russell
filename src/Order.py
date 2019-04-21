@@ -18,6 +18,12 @@ PERIODIC_UPDATE = False
 ############### Accessing Catalog server  #############
 #######################################################
 
+
+def get_address(address_dict):
+    IP = address_dict['IP']
+    port = address_dict['port']
+    address = 'http://' + IP + ':' + port
+
 with open(SERVER_CONFIG, mode ='r') as server_file:
     server_dict = {}
     csv_reader = csv.DictReader(server_file)
@@ -27,12 +33,13 @@ with open(SERVER_CONFIG, mode ='r') as server_file:
                                     'IP': row['IP'],
                                     'Port': row['Port']}
     
-    catalog_dict = server_dict['Catalog']
-    catalog_IP = catalog_dict['IP']
-    catalog_port = catalog_dict['Port']
-    ORDER_PORT = server_dict['Order']['Port']
+    catalog_dict_0 = server_dict['Catalog_0']
+    catalog_address_0 = get_address(catalog_dict_0)
+    catalog_dict_1 = server_dict['Catalog_1']
+    catalog_address_1 = get_address(catalog_dict_1)
+    ORDER_PORT = server_dict['Order_0']['Port']
 
-CATALOG_ADDRESS = 'http://' + catalog_IP + ':' + catalog_port
+CATALOG_ADDRESS = catalog_address_0
 
 
 #######################################################

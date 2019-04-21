@@ -61,6 +61,18 @@ def create_order(order_id,processing_time,is_successful,catalog_id,title):
             'catalog_id': catalog_id,
             'title': title}
 
+def package_order_into_string(input):
+    return "<ORDER_INFO>".join(input)
+
+def unpack_string_into_order(input):
+    order_id,processing_time,is_successful,catalog_id,title = input.split("<ORDER_INFO>")
+    if is_successful == "True":
+        is_successful = True
+    else:
+        is_successful = False
+    return create_order(int(order_id),float(processing_time),is_successful,catalog_id,title)
+
+
 def write_order(order):
     with open(ORDER_FILE, mode='a') as order_log:
         fieldnames = ['order_id', 'processing_time','is_successful','catalog_id','title']
@@ -136,9 +148,16 @@ class Buy(Resource):
                 title = title + errorString
         order = create_order(order_id,processing_time,is_successful,catalog_id,title)
         write_order(order)
+        order_string = package_order_into_string([str(order_id),str(processing_time),str(is_successful),catalog_id,title])
         return jsonify(order)
 
 
+# 
+class Write(Resource):
+    def get(self, order_string):
+        order = unpack_string_into_order(order_string)
+        write_order(order)
+        return jsonify(order)
 
 
 # OrderList
@@ -150,6 +169,7 @@ class OrderList(Resource):
     
     def delete(self):
         reset_orders()
+        # reset orders in replica
         orders = get_orders_as_dict()
         return jsonify(orders)
 
@@ -158,6 +178,7 @@ class OrderList(Resource):
 ##
 api.add_resource(OrderList, '/orders')
 api.add_resource(Buy, '/buy/<catalog_id>')
+api.add_resource(Write, '/write/<order_string>')
 
 
 if __name__ == '__main__':

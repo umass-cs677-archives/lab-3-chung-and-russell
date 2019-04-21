@@ -18,6 +18,12 @@ PERIODIC_UPDATE = False
 ############### Accessing Catalog server  #############
 #######################################################
 
+
+def get_address(address_dict):
+    IP = address_dict['IP']
+    port = address_dict['port']
+    address = 'http://' + IP + ':' + port
+
 with open(SERVER_CONFIG, mode ='r') as server_file:
     server_dict = {}
     csv_reader = csv.DictReader(server_file)
@@ -27,12 +33,13 @@ with open(SERVER_CONFIG, mode ='r') as server_file:
                                     'IP': row['IP'],
                                     'Port': row['Port']}
     
-    catalog_dict = server_dict['Catalog']
-    catalog_IP = catalog_dict['IP']
-    catalog_port = catalog_dict['Port']
-    ORDER_PORT = server_dict['Order']['Port']
+    catalog_dict_0 = server_dict['Catalog_0']
+    catalog_address_0 = get_address(catalog_dict_0)
+    catalog_dict_1 = server_dict['Catalog_1']
+    catalog_address_1 = get_address(catalog_dict_1)
+    ORDER_PORT = server_dict['Order_0']['Port']
 
-CATALOG_ADDRESS = 'http://' + catalog_IP + ':' + catalog_port
+CATALOG_ADDRESS = catalog_address_0
 
 
 #######################################################
@@ -60,6 +67,18 @@ def create_order(order_id,processing_time,is_successful,catalog_id,title):
             'is_successful': is_successful,
             'catalog_id': catalog_id,
             'title': title}
+
+def package_order_into_string(input):
+    return "<ORDER_INFO>".join(input)
+
+def unpack_string_into_order(input):
+    order_id,processing_time,is_successful,catalog_id,title = input.split("<ORDER_INFO>")
+    if is_successful == "True":
+        is_successful = True
+    else:
+        is_successful = False
+    return create_order(int(order_id),float(processing_time),is_successful,catalog_id,title)
+
 
 def write_order(order):
     with open(ORDER_FILE, mode='a') as order_log:
@@ -136,9 +155,16 @@ class Buy(Resource):
                 title = title + errorString
         order = create_order(order_id,processing_time,is_successful,catalog_id,title)
         write_order(order)
+        order_string = package_order_into_string([str(order_id),str(processing_time),str(is_successful),catalog_id,title])
         return jsonify(order)
 
 
+# 
+class Write(Resource):
+    def get(self, order_string):
+        order = unpack_string_into_order(order_string)
+        write_order(order)
+        return jsonify(order)
 
 
 # OrderList
@@ -150,6 +176,7 @@ class OrderList(Resource):
     
     def delete(self):
         reset_orders()
+        # reset orders in replica
         orders = get_orders_as_dict()
         return jsonify(orders)
 
@@ -158,6 +185,7 @@ class OrderList(Resource):
 ##
 api.add_resource(OrderList, '/orders')
 api.add_resource(Buy, '/buy/<catalog_id>')
+api.add_resource(Write, '/write/<order_string>')
 
 
 if __name__ == '__main__':

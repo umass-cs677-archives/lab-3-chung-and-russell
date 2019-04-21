@@ -1,5 +1,6 @@
 import sqlite3
-from flask import Flask, redirect, jsonify, abort, g
+import requests
+from flask import Flask, jsonify, abort, g
 import sys
 from utils import *
 
@@ -151,8 +152,46 @@ def update(item_number, field, operation, number):
     return response
 
 
+@app.route("/notify")
+def notify():
+    app.config["primary"] = False
+    print("notifed")
+    return "notified"
+
+
+def notify_all(type, server_dict):
+
+    for server_name, _ in server_dict.items():
+        if type in server_name and server_name != app.config.get("name"):
+            ip, port = get_id_port(server_dict, server_name)
+            query = string_builder([],"http://", ip, ":", port, "/notify")
+            requests.get(query)
+
+
+def hold_election(replica_ids, server_dict):
+    """
+    Bully Algorithm to elect primary server
+    :param replica_ids: list of all catalog server IDs
+    :return:
+    """
+    # ID with highest number
+    primary_id = max(replica_ids)
+    # Current server has the highest ID. self-elected as primary
+    # and notify others
+    if app.config["db_id"] == primary_id:
+        app.config["primary"] = True
+        notify_all("Catalog", server_dict)
+
+
+
+
 if __name__ == "__main__":
     app.config["db_id"] = sys.argv[1]
-    catalog_ip, catalog_port = get_id_port('server_config', "Catalog", app.config.get("db_id"))
+    app.config["name"] = "Catalog_" + sys.argv[1]
+    app.config["primary"] = False
+    server_dict = get_server_dict("server_config", ["Order", "Client"])
+    replica_names, replica_ids = zip(*get_replicas(server_dict, "Catalog"))
+    hold_election(replica_ids, server_dict)
+    catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("db_id"))
     app.run(port=catalog_port)
 

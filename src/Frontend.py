@@ -7,6 +7,7 @@ from typing import Set
 app = Flask("frontend")
 server_dict = get_server_dict("server_config")
 catalog_replicas = get_replicas(server_dict, "Catalog")
+catalog_replica_names, catalog_replica_ids = zip(*catalog_replicas)
 cache = {}
 
 
@@ -41,7 +42,7 @@ def search(topic: str) -> str:
     if topic in cache:
         return cache[topic]
 
-    catalog_server_location = get_server_location(catalog_replicas)
+    catalog_server_location = get_server_location(catalog_replica_names)
     query = string_builder([], catalog_server_location, "/query/", topic)
     books = requests.get(query).json()
     search_result = []
@@ -63,7 +64,7 @@ def search(topic: str) -> str:
 def lookup(item_number):
     if item_number in cache:
         return cache[item_number]
-    catalog_server_location = get_server_location(catalog_replicas)
+    catalog_server_location = get_server_location(catalog_replica_names)
     query = string_builder([], catalog_server_location, "/query/", item_number)
     books = requests.get(query).json()
 

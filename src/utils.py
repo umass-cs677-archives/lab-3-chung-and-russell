@@ -37,7 +37,8 @@ def get_server_dict(server_config: str) -> Dict[str, Dict[str, str]]:
             server_name = row['Server']
             server_dict[server_name] = {'Machine': row['Machine'],
                                         'IP': row['IP'],
-                                        'Port': row['Port']}
+                                        'Port': row['Port'],
+                                        'ID' : row['Replica_num']}
 
     return server_dict
 
@@ -66,10 +67,12 @@ def get_id_port(server_config: str, component_name: str, component_n: str = None
 
 
 def get_replicas(server_dict, server_type):
-    replicas = set()
+    replica_names = []
+    replica_ids = []
 
-    for server_name in server_dict:
+    for server_name, server_settings in server_dict.items():
         if server_type in server_name:
-            replicas.add(server_name)
+            replica_names.append(server_name)
+            replica_ids.append(server_settings['ID'])
 
-    return replicas
+    return zip(replica_names, replica_ids)

@@ -121,10 +121,11 @@ def update(item_number, field, operation, number):
 
     # Not the primary replica, forward the request
     if app.config.get("primary") != app.config.get("name") and "sync" not in request.path:
-        query = string_builder([], "/update/", item_number,"/", field, "/", operation, "/", str(number))
-        forward(query, app.config.get("primary"))
+        query = string_builder([], "update/", item_number,"/", field, "/", operation, "/", str(number))
+        r = forward(query, app.config.get("primary"))
+        return r
 
-    conn = get_db(app.config.get("db_id"))
+    conn = get_db(app.config.get("id"))
     cursor = conn.cursor()
     success = True
 
@@ -149,6 +150,7 @@ def update(item_number, field, operation, number):
         elif operation == "set":
             cursor.execute("UPDATE books SET " + field + "= ? WHERE ID = ?", [str(number), str(item_number)])
             conn.commit()
+            
 
         query_result = cursor.execute("SELECT name, cost, quantity FROM books WHERE id = ?", item_number).fetchall()
         book_name = query_result[0]["NAME"]
@@ -170,7 +172,8 @@ def forward(query, server_name):
     root_url = get_root_url(app.config.get("server_dict"), server_name)
     query = string_builder([root_url], query)
     try:
-        requests.get(query)
+        r = requests.get(query)
+        return r.text
     except requests.exceptions.ConnectionError:
         print("primary server down")
 

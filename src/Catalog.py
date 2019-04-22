@@ -167,7 +167,9 @@ def update(item_number, field, operation, number):
 
 
 def sync_all(query):
-
+    """
+    Synchronize other non-primary servers by the primary server
+    """
     for peer_name in app.config.get("peer_names"):
         # No need to sync up with itself
         if peer_name != app.config.get("name"):
@@ -190,12 +192,15 @@ def notify(primary_name):
 
 def forward(query, server_name):
     root_url = get_root_url(app.config.get("server_dict"), server_name)
-    query = string_builder([root_url], query)
+    forward_query = string_builder([root_url], query)
     try:
-        r = requests.put(query)
+        r = requests.put(forward_query)
         return r.text
     except requests.exceptions.ConnectionError:
         print("primary server down")
+        hold_election()
+        print(app.config.get("primary"))
+        return forward(query, app.config.get("primary"))
 
 
 
@@ -224,6 +229,7 @@ def notify_all():
             root_url = get_root_url(app.config.get("server_dict"), server_name)
             query = string_builder([root_url], "notify/", app.config.get("name"))
             try:
+                # Make a notify request
                 requests.get(query)
             except requests.exceptions.ConnectionError:
                 if server_name in app.config.get("peer_names"):
@@ -237,6 +243,11 @@ def hold_election(id = None):
     """
     # ID with highest number
     peer_ids = app.config.get("peer_ids")
+    # When a server is transferred an election to hold from another server.
+    # Add the transferring server to peer list if it's not already there.
+    # Server who is not the primary only needs to know who the primary is and
+    # that's taken care of when the primary notifies all servers that it won the
+    # election.
     if id and id not in peer_ids:
         peer_ids.append(id)
 

@@ -91,7 +91,8 @@ def query(**kwargs):
     return response
 
 
-@app.route("/update/<item_number>/<field>/<operation>/<int:number>", methods=['GET','PUT'])
+@app.route("/update/<item_number>/<field>/<operation>/<int:number>", methods=['PUT'])
+@app.route("/sync/<item_number>/<field>/<operation>/<int:number>", methods=['PUT'])
 def update(item_number, field, operation, number):
     """
 
@@ -150,7 +151,11 @@ def update(item_number, field, operation, number):
         elif operation == "set":
             cursor.execute("UPDATE books SET " + field + "= ? WHERE ID = ?", [str(number), str(item_number)])
             conn.commit()
-            
+
+        if app.config.get("primary") == app.config.get("name"):
+            query = string_builder([], "sync/", item_number, "/", field, "/", operation, "/", str(number))
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(sync_all, query)
 
         query_result = cursor.execute("SELECT name, cost, quantity FROM books WHERE id = ?", item_number).fetchall()
         book_name = query_result[0]["NAME"]
@@ -159,6 +164,21 @@ def update(item_number, field, operation, number):
         response = jsonify({book_name: _delete_keys(query_result[0], ["NAME"])})
 
     return response
+
+
+def sync_all(query):
+
+    for peer_name in app.config.get("peer_names"):
+        # No need to sync up with itself
+        if peer_name != app.config.get("name"):
+            root_url = get_root_url(app.config.get("server_dict"), peer_name)
+            sync_query = string_builder([root_url], query)
+
+            try:
+                r = requests.put(sync_query)
+            except requests.exceptions.ConnectionError:
+                app.config.get("peer_names").remove(peer_name)
+                print(peer_name + " is down")
 
 
 @app.route("/notify/<primary_name>")
@@ -172,7 +192,7 @@ def forward(query, server_name):
     root_url = get_root_url(app.config.get("server_dict"), server_name)
     query = string_builder([root_url], query)
     try:
-        r = requests.get(query)
+        r = requests.put(query)
         return r.text
     except requests.exceptions.ConnectionError:
         print("primary server down")
@@ -252,14 +272,14 @@ def hold_election(id = None):
 
 
 if __name__ == "__main__":
+    app.config["id"] = sys.argv[1]
+    app.config["name"] = "Catalog_" + app.config["id"]
     app.config["server_dict"] = get_server_dict("server_config", ["Order", "Client"])
     # Redundant variable assignment make the calls to this reference shorter
     server_dict = app.config["server_dict"]
     replica_names, replica_ids = zip(*get_replicas(server_dict, "Catalog"))
     app.config["peer_ids"] = list(replica_ids)
     app.config["peer_names"] = list(replica_names)
-    app.config["id"] = sys.argv[1]
-    app.config["name"] = "Catalog_" + app.config["id"]
     catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("id"))
 
     root_url = get_root_url(app.config.get("server_dict"), app.config["name"])

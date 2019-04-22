@@ -158,10 +158,15 @@ def update(item_number, field, operation, number):
         book_name = query_result[0]["NAME"]
         query_result[0]["SUCCESS"] = success
 
+        executor = ThreadPoolExecutor(max_workers=2)
         if app.config.get("primary") == app.config.get("name"):
+            # Sync other non-primary servers
             query = string_builder([], "sync/", item_number, "/", field, "/", "set", "/", str(query_result[0][field.upper()]))
-            executor = ThreadPoolExecutor(max_workers=1)
             executor.submit(sync_all, query)
+            # Invalidate front end cache
+            front_end_url = get_root_url(app.config.get("server_dict"), "Frontend")
+            invalidate_query = string_builder([front_end_url], "invalidate/", str(item_number))
+            executor.submit(requests.put, invalidate_query)
 
         response = jsonify({book_name: _delete_keys(query_result[0], ["NAME"])})
 

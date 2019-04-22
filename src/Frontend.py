@@ -29,12 +29,14 @@ def get_server_location(replicas: List[str]):
     return server_location
 
 
-@app.route("/invalidate/<entry_key>")
+@app.route("/invalidate/<entry_key>", methods=["PUT"])
 def invalidate(entry_key):
     """
     Delete specify entry from the cache. It could be a topic name or an item number
     """
     del cache[entry_key]
+    # print(string_builder([], "cache entry ",  entry_key, " invalidated"))
+    return "Entry " + entry_key + " invalidated"
 
 
 @app.route("/search/<topic>", methods=["GET"])
@@ -63,6 +65,7 @@ def search(topic: str) -> str:
 @app.route("/lookup/<item_number>")
 def lookup(item_number):
     if item_number in cache:
+        print("cache hit")
         return cache[item_number]
     catalog_server_location = get_server_location(catalog_replica_names)
     query = string_builder([], catalog_server_location, "/query/", item_number)
@@ -97,4 +100,7 @@ def lookup(item_number):
 
 
 if __name__ == "__main__":
-    app.run(port=5001)
+    app.config["server_dict"] = get_server_dict("server_config")
+    server_dict = app.config["server_dict"]
+    frontend_ip, frontend_port = get_id_port(server_dict, "Frontend")
+    app.run(port=frontend_port)

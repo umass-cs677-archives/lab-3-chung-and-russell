@@ -175,19 +175,6 @@ def forward(query, server_name):
         print("primary server down")
 
 
-# def after_this_request(func):
-#     if not hasattr(g, 'call_after_request'):
-#         g.call_after_request = []
-#     g.call_after_request.append(func)
-#     return func
-#
-#
-# @app.after_request
-# def per_request_callbacks(response):
-#     for func in getattr(g, 'call_after_request', ()):
-#         response = func(response)
-#     return response
-
 
 def get_candidates(peer_ids: List[int], self_id: int) -> List[int]:
     """
@@ -215,9 +202,7 @@ def notify_all():
             query = string_builder([root_url], "notify/", app.config.get("name"))
             try:
                 requests.get(query)
-                print("what da shit")
             except requests.exceptions.ConnectionError:
-                print("what da heck")
                 if server_name in app.config.get("peer_names"):
                     app.config.get("peer_names").remove(server_name)
 
@@ -280,7 +265,5 @@ if __name__ == "__main__":
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         executor.submit(app.run, port=catalog_port)
-
-    # app.run(port=catalog_port)
 
 

@@ -4,6 +4,7 @@ from flask import Flask, jsonify, abort, g, request, Response
 from utils import *
 from concurrent.futures import ThreadPoolExecutor
 import sys
+import subprocess
 
 app = Flask("catalog")
 locks = get_locks(7)
@@ -152,14 +153,15 @@ def update(item_number, field, operation, number):
             cursor.execute("UPDATE books SET " + field + "= ? WHERE ID = ?", [str(number), str(item_number)])
             conn.commit()
 
-        if app.config.get("primary") == app.config.get("name"):
-            query = string_builder([], "sync/", item_number, "/", field, "/", operation, "/", str(number))
-            executor = ThreadPoolExecutor(max_workers=1)
-            executor.submit(sync_all, query)
 
         query_result = cursor.execute("SELECT name, cost, quantity FROM books WHERE id = ?", item_number).fetchall()
         book_name = query_result[0]["NAME"]
         query_result[0]["SUCCESS"] = success
+
+        if app.config.get("primary") == app.config.get("name"):
+            query = string_builder([], "sync/", item_number, "/", field, "/", "set", "/", str(query_result[0][field.upper()]))
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(sync_all, query)
 
         response = jsonify({book_name: _delete_keys(query_result[0], ["NAME"])})
 
@@ -197,6 +199,8 @@ def forward(query, server_name):
         r = requests.put(forward_query)
         return r.text
     except requests.exceptions.ConnectionError:
+        # Primary server is down, holds an election and forwards the
+        # request to the new primary
         print("primary server down")
         hold_election()
         print(app.config.get("primary"))
@@ -248,8 +252,8 @@ def hold_election(id = None):
     # Server who is not the primary only needs to know who the primary is and
     # that's taken care of when the primary notifies all servers that it won the
     # election.
-    if id and id not in peer_ids:
-        peer_ids.append(id)
+    if id and "Catalog_" + id not in app.config.get("peer_names"):
+        app.config.get("peer_names").append("Catalog_" + id)
 
     primary_id = max(peer_ids)
 
@@ -269,6 +273,8 @@ def hold_election(id = None):
             try:
                 # Transfer the election to the first successful connected candidate
                 r = requests.get(request_url)
+                # Execute a shell script to replace associated database to the server
+                # that responds to the request
                 print(r.text)
                 return r.text
 

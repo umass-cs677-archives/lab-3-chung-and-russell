@@ -1,12 +1,12 @@
 import sqlite3
 import requests
-from flask import Flask, jsonify, abort, g
-import sys
+from flask import Flask, jsonify, abort, g, request, Response
 from utils import *
+from concurrent.futures import ThreadPoolExecutor
+import sys
 
 app = Flask("catalog")
 locks = get_locks(7)
-
 
 def get_db(id):
     database = ["inventory"]
@@ -33,7 +33,8 @@ def close_connection(exception):
 
 def _pair_results(query_results, fields_to_pair):
     """
-    It pairs up entries of the dictionaries in the query result. For example, two dictionaries {a : "book1", b : 10} {a : "book2", b : 25}
+    It pairs up entries of the dictionaries in the query result. For example,
+    two dictionaries {a : "book1", b : 10} {a : "book2", b : 25}
     will be packed into one dictionary {"book1" : 10, "book2" : 25}
 
     :param query_results: A list of dictionaries. All dictionaries must have the same keys or the function will fail
@@ -68,9 +69,8 @@ def _delete_keys(dict, keys):
 @app.route("/query/<topic>", methods=['GET'])
 @app.route("/query/<int:item_number>", methods=['GET'])
 def query(**kwargs):
-
     key = list(kwargs)[0]
-    cursor = get_db(app.config.get("db_id")).cursor()
+    cursor = get_db(app.config.get("id")).cursor()
 
     if key == "topic":
         topic = (kwargs[key].replace("_", " "),)
@@ -80,7 +80,8 @@ def query(**kwargs):
     elif key == "item_number":
 
         with locks[kwargs[key] - 1]:
-            query_result = cursor.execute("SELECT name, cost, quantity FROM books WHERE id = ?", str(kwargs[key])).fetchall()
+            query_result = cursor.execute("SELECT name, cost, quantity FROM books WHERE id = ?",
+                                          str(kwargs[key])).fetchall()
             book_name = query_result[0]["NAME"]
             response = jsonify({book_name: _delete_keys(query_result[0],["NAME"])})
 
@@ -118,13 +119,19 @@ def update(item_number, field, operation, number):
     if number < 0:
         abort(400)
 
-    conn = app.config.get("db_id")
+    # Not the primary replica, forward the request
+    if app.config.get("primary") != app.config.get("name") and "sync" not in request.path:
+        query = string_builder([], "/update/", item_number,"/", field, "/", operation, "/", str(number))
+        forward(query, app.config.get("primary"))
+
+    conn = get_db(app.config.get("db_id"))
     cursor = conn.cursor()
     success = True
 
     with locks[int(item_number) - 1]:
         if operation == "increase":
-            cursor.execute("UPDATE books SET " + field + "=" + field + valid_operation[operation] + " ? WHERE ID = ?", [str(number), item_number])
+            cursor.execute("UPDATE books SET " + field + "=" + field + valid_operation[operation] + " ? WHERE ID = ?",
+                           [str(number), item_number])
             conn.commit()
 
         elif operation == "decrease":
@@ -152,46 +159,128 @@ def update(item_number, field, operation, number):
     return response
 
 
-@app.route("/notify")
-def notify():
-    app.config["primary"] = False
+@app.route("/notify/<primary_name>")
+def notify(primary_name):
+    app.config["primary"] = primary_name
     print("notifed")
     return "notified"
 
 
-def notify_all(type, server_dict):
+def forward(query, server_name):
+    root_url = get_root_url(app.config.get("server_dict"), server_name)
+    query = string_builder([root_url], query)
+    try:
+        requests.get(query)
+    except requests.exceptions.ConnectionError:
+        print("primary server down")
+
+
+# def after_this_request(func):
+#     if not hasattr(g, 'call_after_request'):
+#         g.call_after_request = []
+#     g.call_after_request.append(func)
+#     return func
+#
+#
+# @app.after_request
+# def per_request_callbacks(response):
+#     for func in getattr(g, 'call_after_request', ()):
+#         response = func(response)
+#     return response
+
+
+def get_candidates(peer_ids: List[int], self_id: int) -> List[int]:
+    """
+    Get a list of candidates whose IDs are higher.
+
+    :param peer_ids: list of all peer IDs
+    :param self_id: ID of the server who initiates the election
+    :return: suitable candidates who have higher IDs than self_id
+    """
+    candidates = []
+
+    for peer_id in peer_ids:
+        if peer_id > self_id:
+            candidates.append(peer_id)
+
+    return candidates
+
+
+def notify_all():
+    server_dict = app.config.get("server_dict")
 
     for server_name, _ in server_dict.items():
-        if type in server_name and server_name != app.config.get("name"):
-            ip, port = get_id_port(server_dict, server_name)
-            query = string_builder([],"http://", ip, ":", port, "/notify")
-            requests.get(query)
+        if "Catalog" in server_name and server_name != app.config.get("name"):
+            root_url = get_root_url(app.config.get("server_dict"), server_name)
+            query = string_builder([root_url], "notify/", app.config.get("name"))
+            try:
+                requests.get(query)
+                print("what da shit")
+            except requests.exceptions.ConnectionError:
+                print("what da heck")
+                if server_name in app.config.get("peer_names"):
+                    app.config.get("peer_names").remove(server_name)
 
 
-def hold_election(replica_ids, server_dict):
+@app.route("/hold_election/<id>")
+def hold_election(id = None):
     """
     Bully Algorithm to elect primary server
-    :param replica_ids: list of all catalog server IDs
-    :return:
     """
     # ID with highest number
-    primary_id = max(replica_ids)
+    peer_ids = app.config.get("peer_ids")
+    if id and id not in peer_ids:
+        peer_ids.append(id)
+
+    primary_id = max(peer_ids)
+
     # Current server has the highest ID. self-elected as primary
     # and notify others
-    if app.config["db_id"] == primary_id:
-        app.config["primary"] = True
-        notify_all("Catalog", server_dict)
+    if app.config["id"] == primary_id:
+        app.config["primary"] = app.config.get("name")
+        notify_all()
+        return Response(app.config.get("name") + " won", status=200)
+    else:
+        candidates = get_candidates(peer_ids, app.config["id"])
+        for candidate_id in candidates:
+            server_name = string_builder(["Catalog_"], candidate_id)
+            root_url = get_root_url(app.config.get("server_dict"), server_name)
+            request_url = string_builder([root_url], "hold_election/", app.config["id"])
 
+            try:
+                # Transfer the election to the first successful connected candidate
+                r = requests.get(request_url)
+                print(r.text)
+                return r.text
 
+            except requests.exceptions.ConnectionError:
+                if server_name in app.config.get("peer_names"):
+                    app.config.get("peer_names").remove(server_name)
+
+        # No server with higher IDs, elected by default
+        app.config["primary"] = app.config.get("name")
+        notify_all()
+        return Response(app.config.get("name") + " won", status=200)
 
 
 if __name__ == "__main__":
-    app.config["db_id"] = sys.argv[1]
-    app.config["name"] = "Catalog_" + sys.argv[1]
-    app.config["primary"] = False
-    server_dict = get_server_dict("server_config", ["Order", "Client"])
+    app.config["server_dict"] = get_server_dict("server_config", ["Order", "Client"])
+    # Redundant variable assignment make the calls to this reference shorter
+    server_dict = app.config["server_dict"]
     replica_names, replica_ids = zip(*get_replicas(server_dict, "Catalog"))
-    hold_election(replica_ids, server_dict)
-    catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("db_id"))
-    app.run(port=catalog_port)
+    app.config["peer_ids"] = list(replica_ids)
+    app.config["peer_names"] = list(replica_names)
+    app.config["id"] = sys.argv[1]
+    app.config["name"] = "Catalog_" + app.config["id"]
+    catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("id"))
+
+    root_url = get_root_url(app.config.get("server_dict"), app.config["name"])
+    executors = ThreadPoolExecutor(max_workers=1)
+    executors.submit(hold_election)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(app.run, port=catalog_port)
+
+    # app.run(port=catalog_port)
+
 

@@ -55,8 +55,8 @@ def get_id_port(server_dict, component_name: str, component_n: str = None) -> (s
     Get ID and port of a server from the config file
 
     :param server_dict: dictionary that stores server configs
-    :param component_name: name of the component, could be Frontend, Catalog or Order
-    :param component_n: its replica id
+    :param component_name: name of the component, could be Frontend, Catalog or Order.
+    :param component_n: its replica id, if not provided, only component_name is used to search the config file
     :return: ip and port specified in config file
     """
 
@@ -70,6 +70,14 @@ def get_id_port(server_dict, component_name: str, component_n: str = None) -> (s
 
     return ip, port
 
+def get_root_url(serverdict, server_name: str, server_n: str = None):
+    """
+    Get root url in the form of http://ip:port/ of the specified server
+    """
+    ip, port = get_id_port(serverdict,server_name, server_n)
+    root_url = string_builder(["http://"], ip, ":", port, "/")
+
+    return root_url
 
 def get_replicas(server_dict, server_type):
     replica_names = []

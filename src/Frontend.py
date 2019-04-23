@@ -2,7 +2,6 @@ from flask import Flask
 import requests
 import random
 from utils import *
-from typing import List
 
 app = Flask("frontend")
 server_dict = get_server_dict("server_config")
@@ -12,7 +11,7 @@ catalog_replica_names = list(catalog_replica_names)
 cache = {}
 
 
-def get_server_location(replicas: List[str]):
+def get_server_location(replicas):
     """
     Load balancing between replicas
 

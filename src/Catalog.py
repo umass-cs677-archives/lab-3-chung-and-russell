@@ -218,7 +218,7 @@ def forward(query, server_name):
         return forward(query, app.config.get("primary"))
 
 
-def get_candidates(peer_ids: List[int], self_id: int) -> List[int]:
+def get_candidates(peer_ids, self_id):
     """
     Get a list of candidates whose IDs are higher.
 

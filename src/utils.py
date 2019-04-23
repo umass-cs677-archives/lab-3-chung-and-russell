@@ -1,4 +1,3 @@
-from typing import List, Dict
 from threading import Lock
 import csv
 
@@ -15,7 +14,7 @@ def get_locks(n_lock: int):
     return locks
 
 
-def string_builder(l: List[str], *elements) -> str:
+def string_builder(l, *elements) -> str:
     """
     :param l: a list of strings
     :param elements: strings
@@ -26,11 +25,11 @@ def string_builder(l: List[str], *elements) -> str:
     return "".join(l)
 
 
-def get_server_dict(server_config: str, exclude_types: List[str] = []) -> Dict[str, Dict[str, str]]:
+def get_server_dict(server_config, exclude_types):
 
     with open(server_config, mode='r') as server_file:
 
-        server_dict: Dict[str, Dict[str, str]] = {}
+        server_dict = {}
         csv_reader = csv.DictReader(server_file)
 
         for row in csv_reader:
@@ -70,7 +69,7 @@ def get_id_port(server_dict, component_name: str, component_n: str = None) -> (s
 
     return ip, port
 
-def get_root_url(serverdict, server_name: str, server_n: str = None):
+def get_root_url(serverdict, server_name, server_n = None):
     """
     Get root url in the form of http://ip:port/ of the specified server
     """

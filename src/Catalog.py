@@ -197,6 +197,18 @@ def notify(primary_name):
     """
     app.config["primary"] = primary_name
     print(primary_name, " is the new primary")
+    # Register itself with the new primary
+    primary_root_url = get_root_url(app.config.get("server_dict"), primary_name)
+    try:
+        register_query = string_builder([primary_root_url], "register/", app.config.get("name"))
+        requests.put(register_query)
+        
+    except requests.exceptions.ConnectionError:
+        # Primary server is down, holds an election and forwards the
+        # request to the new primary
+        print("primary server down")
+        hold_election()
+
     return "notified"
 
 
@@ -214,7 +226,6 @@ def forward(query, server_name):
         # request to the new primary
         print("primary server down")
         hold_election()
-        print(app.config.get("primary"))
         return forward(query, app.config.get("primary"))
 
 
@@ -268,11 +279,12 @@ def hold_election(id = None):
     # and notify others
     if app.config["id"] == primary_id:
         app.config["primary"] = app.config.get("name")
+        print("I won the election")
         notify_all()
-        print("I won the elction")
         return Response(app.config.get("name") + " won", status=200)
     else:
         candidates = get_candidates(peer_ids, app.config["id"])
+
         for candidate_id in candidates:
             server_name = string_builder(["Catalog_"], candidate_id)
             root_url = get_root_url(app.config.get("server_dict"), server_name)
@@ -281,9 +293,6 @@ def hold_election(id = None):
             try:
                 # Transfer the election to the first successful connected candidate
                 r = requests.get(request_url)
-                # Execute a shell script to replace associated database to the server
-                # that responds to the request
-                print(r.text)
                 return r.text
 
             except requests.exceptions.ConnectionError:
@@ -293,8 +302,15 @@ def hold_election(id = None):
         # No server with higher IDs, elected by default
         app.config["primary"] = app.config.get("name")
         notify_all()
-        print("I won the elction")
+        print("I won the election")
         return Response(app.config.get("name") + " won", status=200)
+
+
+@app.route("/register/<server_name>", methods=["PUT"])
+def register(server_name):
+    if server_name not in app.config.get("peer_names"):
+        app.config.get("peer_names").append(server_name)
+    return "Sucessfully register with " + app.config.get("name")
 
 
 def sync_up(server_dict, peer_name_ids):
@@ -333,15 +349,21 @@ if __name__ == "__main__":
     server_dict = app.config["server_dict"]
     replica_names, replica_ids = zip(*get_replicas(server_dict, "Catalog"))
     app.config["peer_ids"] = list(replica_ids)
+    # Assume a primary, if the assumed primary isn't in fact running, another
+    # primary will be elected later on
+    app.config["primary"] = "Catalog_" + str(max(app.config["peer_ids"]))
     app.config["peer_names"] = list(replica_names)
     catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("id"))
 
     root_url = get_root_url(app.config.get("server_dict"), app.config["name"])
-    executors = ThreadPoolExecutor(max_workers=1)
-    executors.submit(hold_election)
+    # executors = ThreadPoolExecutor(max_workers=1)
+    # executors.submit(hold_election)
     sync_up(server_dict, list(get_replicas(server_dict, "Catalog")))
     register_with_frontend(server_dict)
-    app.run(host=catalog_ip, port=catalog_port)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(app.run, host=catalog_ip, port=catalog_port)
+        executor.submit(hold_election)
+        # app.run(host=catalog_ip, port=catalog_port)
 
 
 

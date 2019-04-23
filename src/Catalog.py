@@ -257,8 +257,7 @@ def notify_all():
                 # Make a notify request
                 requests.get(query)
             except requests.exceptions.ConnectionError:
-                if server_name in app.config.get("peer_names"):
-                    app.config.get("peer_names").remove(server_name)
+                print("Failed to notify ", server_name, " the election result.")
 
 
 @app.route("/hold_election/<id>")

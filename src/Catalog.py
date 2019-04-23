@@ -202,7 +202,7 @@ def notify(primary_name):
     try:
         register_query = string_builder([primary_root_url], "register/", app.config.get("name"))
         requests.put(register_query)
-        
+
     except requests.exceptions.ConnectionError:
         # Primary server is down, holds an election and forwards the
         # request to the new primary

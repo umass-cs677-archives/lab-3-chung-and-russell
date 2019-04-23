@@ -25,7 +25,7 @@ def string_builder(l, *elements) -> str:
     return "".join(l)
 
 
-def get_server_dict(server_config, exclude_types):
+def get_server_dict(server_config, exclude_types=[]):
 
     with open(server_config, mode='r') as server_file:
 

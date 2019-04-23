@@ -342,8 +342,7 @@ if __name__ == "__main__":
     executors.submit(hold_election)
     sync_up(server_dict, list(get_replicas(server_dict, "Catalog")))
     register_with_frontend(server_dict)
+    app.run(host=catalog_ip, port=catalog_port)
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        executor.submit(app.run, host=catalog_ip, port=catalog_port)
 
 

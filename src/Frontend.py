@@ -127,4 +127,4 @@ if __name__ == "__main__":
     app.config["server_dict"] = get_server_dict("server_config")
     server_dict = app.config["server_dict"]
     frontend_ip, frontend_port = get_id_port(server_dict, "Frontend")
-    app.run(port=frontend_port)
+    app.run(host=frontend_ip, port=frontend_port)

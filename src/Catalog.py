@@ -344,6 +344,6 @@ if __name__ == "__main__":
     register_with_frontend(server_dict)
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        executor.submit(app.run, port=catalog_port)
+        executor.submit(app.run, host=catalog_ip, port=catalog_port)
 
 

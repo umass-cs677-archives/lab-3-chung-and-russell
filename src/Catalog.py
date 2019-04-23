@@ -259,9 +259,6 @@ def hold_election(id = None):
     peer_ids = app.config.get("peer_ids")
     # When a server is transferred an election to hold from another server.
     # Add the transferring server to peer list if it's not already there.
-    # Server who is not the primary only needs to know who the primary is and
-    # that's taken care of when the primary notifies all servers that it won the
-    # election.
     if id and "Catalog_" + id not in app.config.get("peer_names"):
         app.config.get("peer_names").append("Catalog_" + id)
 
@@ -272,6 +269,7 @@ def hold_election(id = None):
     if app.config["id"] == primary_id:
         app.config["primary"] = app.config.get("name")
         notify_all()
+        print("I won the elction")
         return Response(app.config.get("name") + " won", status=200)
     else:
         candidates = get_candidates(peer_ids, app.config["id"])
@@ -295,6 +293,7 @@ def hold_election(id = None):
         # No server with higher IDs, elected by default
         app.config["primary"] = app.config.get("name")
         notify_all()
+        print("I won the elction")
         return Response(app.config.get("name") + " won", status=200)
 
 

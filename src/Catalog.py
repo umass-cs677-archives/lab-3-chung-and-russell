@@ -175,7 +175,7 @@ def update(item_number, field, operation, number):
 
 def sync_all(query):
     """
-    Synchronize other non-primary servers by the primary server
+    Synchronize other non-primary servers
     """
     for peer_name in app.config.get("peer_names"):
         # No need to sync up with itself
@@ -192,12 +192,18 @@ def sync_all(query):
 
 @app.route("/notify/<primary_name>")
 def notify(primary_name):
+    """
+    Get notified which server is the new primary
+    """
     app.config["primary"] = primary_name
-    print("notifed")
+    print(primary_name, " is the new primary")
     return "notified"
 
 
 def forward(query, server_name):
+    """
+    Forward the query for the specified server to execute
+    """
     root_url = get_root_url(app.config.get("server_dict"), server_name)
     forward_query = string_builder([root_url], query)
     try:
@@ -293,7 +299,9 @@ def hold_election(id = None):
 
 
 def sync_up(server_dict, peer_name_ids):
-
+    """
+    sync up with the first available server
+    """
     for peer_name_id in peer_name_ids:
         if peer_name_id[0] != app.config.get("name"):
             peer_root_url = get_root_url(server_dict, peer_name_id[0])
@@ -305,8 +313,18 @@ def sync_up(server_dict, peer_name_ids):
                 target_db = string_builder(["inventory_"], app.config["id"], ".db")
                 subprocess.call(['bash','copy.sh', original_db, target_db])
                 print(string_builder([], "sync up with ", peer_name_id[1]))
+                return
             except requests.exceptions.ConnectionError:
                 print(peer_name_id[0], " not running")
+
+
+def register_with_frontend(server_dict):
+    frontend_root_url = get_root_url(server_dict, "Frontend")
+    register_query = string_builder([frontend_root_url], "notify/", "Catalog/", app.config["id"])
+    try:
+        requests.put(register_query)
+    except requests.exceptions.ConnectionError:
+        print("Frontend is not running")
 
 if __name__ == "__main__":
     app.config["id"] = sys.argv[1]
@@ -323,6 +341,8 @@ if __name__ == "__main__":
     executors = ThreadPoolExecutor(max_workers=1)
     executors.submit(hold_election)
     sync_up(server_dict, list(get_replicas(server_dict, "Catalog")))
+    register_with_frontend(server_dict)
+
     with ThreadPoolExecutor(max_workers=1) as executor:
         executor.submit(app.run, port=catalog_port)
 

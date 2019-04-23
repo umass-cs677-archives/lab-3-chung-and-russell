@@ -7,7 +7,8 @@ from typing import List
 app = Flask("frontend")
 server_dict = get_server_dict("server_config")
 catalog_replicas = get_replicas(server_dict, "Catalog")
-catalog_replica_names, catalog_replica_ids = zip(*catalog_replicas)
+catalog_replica_names, _ = zip(*catalog_replicas)
+catalog_replica_names = list(catalog_replica_names)
 cache = {}
 
 
@@ -26,8 +27,18 @@ def get_server_location(replicas: List[str]):
     server_port = server_dict[name]["Port"]
     server_location = string_builder(server_location, server_ip, ":", server_port)
 
-    return server_location
+    return server_location, name
 
+
+@app.route("/notify/<server_type>/<server_id>", methods=["PUT"])
+def get_notified(server_type, server_id):
+    """
+    API for a server to notify frontend
+    """
+    if server_type == "Catalog":
+        catalog_replica_names.append(string_builder([server_type],"_", server_id))
+
+    return "succesfully registered with frontend"
 
 @app.route("/invalidate/<entry_key>", methods=["PUT"])
 def invalidate(entry_key):
@@ -42,51 +53,65 @@ def invalidate(entry_key):
 @app.route("/search/<topic>", methods=["GET"])
 def search(topic: str) -> str:
     if topic in cache:
+        print("cache hit")
         return cache[topic]
 
-    catalog_server_location = get_server_location(catalog_replica_names)
+    catalog_server_location, server_name = get_server_location(catalog_replica_names)
     query = string_builder([], catalog_server_location, "/query/", topic)
-    books = requests.get(query).json()
-    search_result = []
+    try:
+        books = requests.get(query).json()
+        search_result = []
 
-    for book in books["items"]:
-        search_result.append("Name: ")
-        search_result.append(book)
-        search_result.append(" Item ID: ")
-        search_result.append(str(books["items"][book]))
-        search_result.append("\n")
+        for book in books["items"]:
+            search_result.append("Name: ")
+            search_result.append(book)
+            search_result.append(" Item ID: ")
+            search_result.append(str(books["items"][book]))
+            search_result.append("\n")
 
-    search_result = "".join(search_result)
-    cache[topic] = search_result
+        search_result = "".join(search_result)
+        cache[topic] = search_result
 
-    return search_result
+        return search_result
+
+    except requests.exceptions.ConnectionError:
+        if server_name in catalog_replica_names:
+            catalog_replica_names.remove(server_name)
+        return search(topic)
 
 
 @app.route("/lookup/<item_number>")
 def lookup(item_number):
-    if item_number in cache:
-        print("cache hit")
-        return cache[item_number]
-    catalog_server_location = get_server_location(catalog_replica_names)
+    # if item_number in cache:
+    #     print("cache hit")
+    #     return cache[item_number]
+    catalog_server_location, server_name = get_server_location(catalog_replica_names)
     query = string_builder([], catalog_server_location, "/query/", item_number)
-    books = requests.get(query).json()
 
-    search_result = []
+    try:
+        books = requests.get(query).json()
 
-    for book in books:
-        search_result.append("Name: ")
-        search_result.append(book)
-        search_result.append("\n")
-        search_result.append("Cost: ")
-        search_result.append(str(books[book]["COST"]))
-        search_result.append("\n")
-        search_result.append("Quantity: ")
-        search_result.append(str(books[book]["QUANTITY"]))
-        search_result.append("\n")
+        search_result = []
 
-    search_result = "".join(search_result)
-    cache[item_number] = search_result
-    return search_result
+        for book in books:
+            search_result.append("Name: ")
+            search_result.append(book)
+            search_result.append("\n")
+            search_result.append("Cost: ")
+            search_result.append(str(books[book]["COST"]))
+            search_result.append("\n")
+            search_result.append("Quantity: ")
+            search_result.append(str(books[book]["QUANTITY"]))
+            search_result.append("\n")
+
+        search_result = "".join(search_result)
+        cache[item_number] = search_result
+        return search_result
+
+    except requests.exceptions.ConnectionError:
+        if server_name in catalog_replica_names:
+            catalog_replica_names.remove(server_name)
+        return lookup(item_number)
 #
 #
 # @app.route("/buy/<catalog_id>")

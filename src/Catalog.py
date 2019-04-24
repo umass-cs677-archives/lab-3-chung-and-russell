@@ -1,10 +1,10 @@
 import sqlite3
 import requests
-from flask import Flask, jsonify, abort, g, request, Response
+from flask import Flask, jsonify, abort, g, request, Response, make_response
+import codecs
 from utils import *
 from concurrent.futures import ThreadPoolExecutor
 import sys
-import subprocess
 
 app = Flask("catalog")
 locks = get_locks(7)
@@ -320,17 +320,23 @@ def sync_up(server_dict, peer_name_ids):
         if peer_name_id[0] != app.config.get("name"):
             peer_root_url = get_root_url(server_dict, peer_name_id[0])
             try:
-                # Send a request to root to see if this peer is up.
-                # It will respond with 404 but that doesn't matter
-                requests.get(peer_root_url)
-                original_db = string_builder(["inventory_"], peer_name_id[1], ".db")
+                download_query = string_builder([peer_root_url], "download/", "inventory_",  peer_name_id[1], ".db")
+                r = requests.get(download_query)
                 target_db = string_builder(["inventory_"], app.config["id"], ".db")
-                subprocess.call(['bash','copy.sh', original_db, target_db])
+                with open(target_db, "wb") as db:
+                    db.write(r.content)
                 print(string_builder([], "sync up with ", peer_name_id[1]))
                 return
             except requests.exceptions.ConnectionError:
                 print(peer_name_id[0], " not running")
 
+@app.route("/download/<file_name>" )
+def download_file(file_name):
+    file_data = codecs.open(file_name, 'rb').read()
+    response = make_response()
+    response.data = file_data
+
+    return response
 
 def register_with_frontend(server_dict):
     frontend_root_url = get_root_url(server_dict, "Frontend")

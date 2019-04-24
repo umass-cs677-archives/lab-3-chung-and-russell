@@ -171,6 +171,35 @@ def sync_up(server_dict, peer_name_ids):
     print("No other running servers, " + app.config.get("name") +" is resetting")
     reset_orders()
 
+def db_check():
+    server_dict = app.config.get("server_dict")
+    peer_name_ids = list(get_replicas(server_dict, "Order"))
+    for peer_name_id in peer_name_ids:
+        if peer_name_id[0] != app.config.get("name"):
+            peer_root_url = get_root_url(server_dict, peer_name_id[0])
+            try:
+                # download db of peer
+                download_query = string_builder([peer_root_url], "download/", "order_",  peer_name_id[1], "_db.txt")
+                r = requests.get(download_query)
+                peer_db = r.content
+                # download own db
+                own_filename = string_builder(["order_"], app.config["id"], "_db.txt")
+                file_data = codecs.open(own_filename, 'rb').read()
+                #response = make_response()
+                #response.data = file_data
+                own_db = file_data
+                print(type(own_db))
+                print(type(peer_db))
+                
+                if own_db == peer_db:
+                    return "Database synced with peer!"
+                else:
+                    return "Database not synced."
+            except requests.exceptions.ConnectionError:
+                print(peer_name_id[0], " not running")
+    return "No other running servers to check with"
+
+
 def sync_all(query):
     """
     Synchronize other non-primary servers
@@ -280,12 +309,19 @@ class OrderList(Resource):
     def delete(self):
         reset_orders()
 
+
 class Download(Resource):
     def get(self,filename):
-        file_data = codecs.open(file_name, 'rb').read()
+        file_data = codecs.open(filename, 'rb').read()
         response = make_response()
         response.data = file_data
         return response
+
+class DBCheck(Resource):
+    def get(self):
+        return db_check()
+
+
 
 
 ##
@@ -295,7 +331,8 @@ api.add_resource(OrderList, '/orders')
 api.add_resource(Buy, '/buy/<catalog_id>')
 api.add_resource(Write, '/write/<order_id>/<processing_time>/<is_successful>/<catalog_id>/<title>')
 api.add_resource(Notify, '/notify/<primary_name>')
-api.add_resource(Download, '/notify/<filename>')
+api.add_resource(Download, '/download/<filename>')
+api.add_resource(DBCheck,'/check')
 
 
 if __name__ == '__main__':

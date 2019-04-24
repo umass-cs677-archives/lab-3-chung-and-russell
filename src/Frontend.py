@@ -44,9 +44,11 @@ def invalidate(entry_key):
     """
     Delete specify entry from the cache. It could be a topic name or an item number
     """
-    del cache[entry_key]
-    # print(string_builder([], "cache entry ",  entry_key, " invalidated"))
-    return "Entry " + entry_key + " invalidated"
+    if entry_key in cache:
+        del cache[entry_key]
+        return "Entry " + entry_key + " invalidated"
+
+    return entry_key + "not in cache"
 
 
 @app.route("/search/<topic>", methods=["GET"])

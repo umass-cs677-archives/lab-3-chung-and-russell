@@ -335,7 +335,15 @@ def sync_up(server_dict, peer_name_ids):
 
 @app.route("/download/<file_name>" )
 def download_file(file_name):
+
+    for lock in locks:
+        lock.acquire()
+
     file_data = codecs.open(file_name, 'rb').read()
+
+    for lock in locks:
+        lock.release()
+
     response = make_response()
     response.headers["primary"] = app.config.get("primary")
     response.data = file_data

@@ -8,6 +8,9 @@ server_dict = get_server_dict("server_config")
 catalog_replicas = get_replicas(server_dict, "Catalog")
 catalog_replica_names, _ = zip(*catalog_replicas)
 catalog_replica_names = list(catalog_replica_names)
+order_replicas = get_replicas(server_dict, "Order")
+order_replica_names, _ = zip(*order_replicas)
+order_replica_names = list(order_replica_names)
 cache = {}
 
 
@@ -36,7 +39,8 @@ def get_notified(server_type, server_id):
     """
     if server_type == "Catalog":
         catalog_replica_names.append(string_builder([server_type],"_", server_id))
-
+    if server_type == "Order":
+        order_replica_names.append(string_builder([server_type],"_", server_id))
     return "succesfully registered with frontend"
 
 @app.route("/invalidate/<entry_key>", methods=["PUT"])
@@ -113,14 +117,18 @@ def lookup(item_number):
         return lookup(item_number)
 #
 #
-# @app.route("/buy/<catalog_id>")
-# def buy(catalog_id):
-#     response = requests.get(ORDER_BUY + catalog_id).json()
-#
-#     if response["is_successful"]:
-#         return "bought book '" + response["title"] + "'\n"
-#
-#     return "failed to buy book '" + response["title"] + "'\n"
+@app.route("/buy/<catalog_id>")
+def buy(catalog_id):
+    order_server_location, server_name = get_server_location(order_replica_names)
+    query = string_builder([], order_server_location, "/buy/", catalog_id)
+    try:
+        response = requests.get(query).json()
+        print(response)
+        if response["is successful"]:
+            return "bought book '" + response["title"] + "'\n"
+        return "failed to buy book '" + response["title"] + "'\n"
+    except requests.exceptions.ConnectionError:
+        return buy(topic)
 
 
 if __name__ == "__main__":

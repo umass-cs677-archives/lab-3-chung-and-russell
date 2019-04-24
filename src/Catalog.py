@@ -5,6 +5,7 @@ import codecs
 from utils import *
 from concurrent.futures import ThreadPoolExecutor
 import sys
+import logging
 
 app = Flask("catalog")
 locks = get_locks(7)
@@ -37,10 +38,8 @@ def _pair_results(query_results, fields_to_pair):
     It pairs up entries of the dictionaries in the query result. For example,
     two dictionaries {a : "book1", b : 10} {a : "book2", b : 25}
     will be packed into one dictionary {"book1" : 10, "book2" : 25}
-
     :param query_results: A list of dictionaries. All dictionaries must have the same keys or the function will fail
     :param fields_to_pair: list of tuples of string that specify what entries in a dictionary to pair up
-
     :return: a dictionary that has values of the paired fields as keys and values
     """
 
@@ -96,10 +95,8 @@ def query(**kwargs):
 @app.route("/sync/<item_number>/<field>/<operation>/<int:number>", methods=['PUT'])
 def update(item_number, field, operation, number):
     """
-
     Update field using given operation and number. A successful update will automatically
     redirect to /query/item_number and displays the updated item info
-
     :param item_number: item to update
     :param field: name of the field to update
     :param operation: three operations are supported. increase, decrease, and set
@@ -124,6 +121,7 @@ def update(item_number, field, operation, number):
     # Not the primary replica, forward the request
     if app.config.get("primary") != app.config.get("name") and "sync" not in request.path:
         query = string_builder([], "update/", item_number,"/", field, "/", operation, "/", str(number))
+        logging.info("Forwarding request to primary")
         r = forward(query, app.config.get("primary"))
         return r
 
@@ -162,7 +160,8 @@ def update(item_number, field, operation, number):
         if app.config.get("primary") == app.config.get("name"):
             # Sync other non-primary servers
             query = string_builder([], "sync/", item_number, "/", field, "/", "set", "/", str(query_result[0][field.upper()]))
-            executor.submit(sync_all, query)
+            sync_all(query)
+            # executor.submit(sync_all, query)
             # Invalidate front end cache
             front_end_url = get_root_url(app.config.get("server_dict"), "Frontend")
             invalidate_query = string_builder([front_end_url], "invalidate/", str(item_number))
@@ -184,7 +183,7 @@ def sync_all(query):
             sync_query = string_builder([root_url], query)
 
             try:
-                r = requests.put(sync_query)
+                requests.put(sync_query)
             except requests.exceptions.ConnectionError:
                 app.config.get("peer_names").remove(peer_name)
                 print(peer_name + " is down")
@@ -201,15 +200,13 @@ def notify(primary_name):
     primary_root_url = get_root_url(app.config.get("server_dict"), primary_name)
     try:
         register_query = string_builder([primary_root_url], "register/", app.config.get("name"))
-        requests.put(register_query)
-
+        r = requests.put(register_query)
+        return "notified"
     except requests.exceptions.ConnectionError:
         # Primary server is down, holds an election and forwards the
         # request to the new primary
-        print("primary server down")
+        logging.warning("primary server down")
         hold_election()
-
-    return "notified"
 
 
 def forward(query, server_name):
@@ -232,7 +229,6 @@ def forward(query, server_name):
 def get_candidates(peer_ids, self_id):
     """
     Get a list of candidates whose IDs are higher.
-
     :param peer_ids: list of all peer IDs
     :param self_id: ID of the server who initiates the election
     :return: suitable candidates who have higher IDs than self_id
@@ -278,7 +274,7 @@ def hold_election(id = None):
     # and notify others
     if app.config["id"] == primary_id:
         app.config["primary"] = app.config.get("name")
-        print("I won the election")
+        logging.info("I won the election")
         notify_all()
         return Response(app.config.get("name") + " won", status=200)
     else:
@@ -300,8 +296,8 @@ def hold_election(id = None):
 
         # No server with higher IDs, elected by default
         app.config["primary"] = app.config.get("name")
+        logging.info("I won the election by default")
         notify_all()
-        print("I won the election")
         return Response(app.config.get("name") + " won", status=200)
 
 
@@ -325,7 +321,14 @@ def sync_up(server_dict, peer_name_ids):
                 target_db = string_builder(["inventory_"], app.config["id"], ".db")
                 with open(target_db, "wb") as db:
                     db.write(r.content)
+                app.config["primary"] = r.headers["primary"]
                 print(string_builder([], "sync up with ", peer_name_id[1]))
+                if app.config["primary"] != app.config["name"]:
+                    # Register with the primary
+                    primary_root_url = get_root_url(app.config.get("server_dict"), app.config["primary"])
+                    register_query = string_builder([primary_root_url], "register/", app.config.get("name"))
+                    requests.put(register_query)
+
                 return
             except requests.exceptions.ConnectionError:
                 print(peer_name_id[0], " not running")
@@ -334,6 +337,7 @@ def sync_up(server_dict, peer_name_ids):
 def download_file(file_name):
     file_data = codecs.open(file_name, 'rb').read()
     response = make_response()
+    response.headers["primary"] = app.config.get("primary")
     response.data = file_data
 
     return response
@@ -359,16 +363,13 @@ if __name__ == "__main__":
     app.config["primary"] = "Catalog_" + str(max(app.config["peer_ids"]))
     app.config["peer_names"] = list(replica_names)
     catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("id"))
-
+    logging.basicConfig(level=logging.INFO)
     root_url = get_root_url(app.config.get("server_dict"), app.config["name"])
     # executors = ThreadPoolExecutor(max_workers=1)
     # executors.submit(hold_election)
     sync_up(server_dict, list(get_replicas(server_dict, "Catalog")))
     register_with_frontend(server_dict)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(app.run, host=catalog_ip, port=catalog_port)
-        executor.submit(hold_election)
-        # app.run(host=catalog_ip, port=catalog_port)
-
-
-
+    # with ThreadPoolExecutor(max_workers=2) as executor:
+    #     # executor.submit(hold_election)
+    #     executor.submit(app.run, host=catalog_ip, port=catalog_port)
+    app.run(host="0.0.0.0", port=catalog_port)

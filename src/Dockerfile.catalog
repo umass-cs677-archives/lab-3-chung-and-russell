@@ -1,0 +1,24 @@
+FROM ubuntu:16.04
+
+COPY . /
+WORKDIR /
+
+RUN apt update && apt install -y sqlite3 \
+  && apt-get install -y python3-pip python3-dev \
+  && cd /usr/local/bin \
+  && ln -s /usr/bin/python3 python \
+  && pip3 install --upgrade pip
+
+RUN pip3 install -r requirements.txt
+
+RUN pip3 install  requests
+
+ARG id
+
+ENV id=${id}
+
+RUN sqlite3 inventory_${id}.db < inventory.sql
+
+RUN python3 --version
+
+CMD python3 Catalog.py ${id}

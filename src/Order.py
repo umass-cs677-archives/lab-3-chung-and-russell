@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify, abort, g, request, Response, make_response
 from flask import jsonify
 from flask_restful import reqparse, abort, Api, Resource
 from utils import *
@@ -73,14 +73,19 @@ parser.add_argument('catalog_id', type = int, help = 'Catalog ID for item to buy
 
 # queries the catalog server, returns the quantity and title of the item
 def query_catalog_server(catalog_id):
-    r = requests.get(app.config.get("catalog_address") + 'query/' + catalog_id)
-    query_result = r.json()
-    # querying by ID gives a json of type {title:{'COST':value, 'QUANTITY':value}}
-    title = list(query_result.keys())[0]
-    item_dict = list(query_result.values())[0]
-    quantity = int(item_dict['QUANTITY'])
+    try:
+        r = requests.get(app.config.get("catalog_address") + 'query/' + catalog_id)
+        query_result = r.json()
+        # querying by ID gives a json of type {title:{'COST':value, 'QUANTITY':value}}
+        title = list(query_result.keys())[0]
+        item_dict = list(query_result.values())[0]
+        quantity = int(item_dict['QUANTITY'])
+        return quantity,title
+    except requests.exceptions.ConnectionError:
+        # server must have been down
+        print("Failed to notify ", server_name, " the election result.")
+        
 
-    return quantity,title
 
 # decrements the catalog server, returns the new quantity 
 def decrement_catalog_server(catalog_id):
@@ -95,6 +100,32 @@ def decrement_catalog_server(catalog_id):
 
 def restock_catalog_server(catalog_id):
     r = requests.put(app.config.get("catalog_address") + 'update/' + catalog_id + '/quantity/increase/300')
+
+
+def hold_election(id = None):
+    """
+    Set self to primary
+    """
+    primary_id = app.config.get("id")
+
+    # Current server is primary.  No need to notify others, since they must be down
+    app.config["primary"] = app.config.get("name")
+    print(app.config.get("name") + "is now the primary")
+    return Response(app.config.get("name") + " won", status=200)
+
+def notify_all():
+    # Propogate this server's primary to all other servers
+    server_dict = app.config.get("server_dict")
+    for server_name, _ in server_dict.items():
+        if "Order" in server_name and server_name != app.config.get("name"):
+            root_url = get_root_url(app.config.get("server_dict"), server_name)
+            query = string_builder([root_url], "notify/", app.config.get("primary"))
+            try:
+                # Make a notify request
+                requests.get(query)
+            except requests.exceptions.ConnectionError:
+                # server must have been down
+                print("Failed to notify ", server_name, " the election result.")
 
 def forward(query, server_name, is_get = True):
     """
@@ -113,22 +144,24 @@ def forward(query, server_name, is_get = True):
     except requests.exceptions.ConnectionError:
         # Primary server is down, holds an election and forwards the
         # request to the new primary
-        print("primary server down")
-        #hold_election()
+        print("primary server down, I am now the primary")
+        # Current server is primary.  No need to notify others, since they must be down
+        app.config["primary"] = app.config.get("name")
+        # Retry the request
         return forward(query, app.config.get("primary"))
 
 
 def sync_up(server_dict, peer_name_ids):
     """
-    sync up with the first available server
+    sync up with the first available server (which must be the primary)
     """
     for peer_name_id in peer_name_ids:
         if peer_name_id[0] != app.config.get("name"):
             peer_root_url = get_root_url(server_dict, peer_name_id[0])
             try:
-                download_query = string_builder([peer_root_url], "download/", "inventory_",  peer_name_id[1], ".db")
+                download_query = string_builder([peer_root_url], "download/", "order_",  peer_name_id[1], "_db.txt")
                 r = requests.get(download_query)
-                target_db = string_builder(["inventory_"], app.config["id"], ".db")
+                target_db = string_builder(["order_"], app.config["id"], "_db.txt")
                 with open(target_db, "wb") as db:
                     db.write(r.content)
                 print(app.config.get("name"),string_builder([], "sync up with replica", peer_name_id[1]))
@@ -137,6 +170,35 @@ def sync_up(server_dict, peer_name_ids):
                 print(peer_name_id[0], " not running")
     print("No other running servers, " + app.config.get("name") +" is resetting")
     reset_orders()
+
+def db_check():
+    server_dict = app.config.get("server_dict")
+    peer_name_ids = list(get_replicas(server_dict, "Order"))
+    for peer_name_id in peer_name_ids:
+        if peer_name_id[0] != app.config.get("name"):
+            peer_root_url = get_root_url(server_dict, peer_name_id[0])
+            try:
+                # download db of peer
+                download_query = string_builder([peer_root_url], "download/", "order_",  peer_name_id[1], "_db.txt")
+                r = requests.get(download_query)
+                peer_db = r.content
+                # download own db
+                own_filename = string_builder(["order_"], app.config["id"], "_db.txt")
+                file_data = codecs.open(own_filename, 'rb').read()
+                #response = make_response()
+                #response.data = file_data
+                own_db = file_data
+                print(type(own_db))
+                print(type(peer_db))
+                
+                if own_db == peer_db:
+                    return "Database synced with peer!"
+                else:
+                    return "Database not synced."
+            except requests.exceptions.ConnectionError:
+                print(peer_name_id[0], " not running")
+    return "No other running servers to check with"
+
 
 def sync_all(query):
     """
@@ -152,6 +214,25 @@ def sync_all(query):
             except requests.exceptions.ConnectionError:
                 app.config.get("peer_names").remove(peer_name)
                 print(peer_name + " is down")
+
+
+
+def startup_config():
+    app.config["id"] = sys.argv[1]
+    app.config["name"] = "Order_" + app.config["id"]
+    app.config["order_db"] = "order_" + app.config["id"] + "_db.txt"
+    app.config["server_dict"] = get_server_dict("server_config", ["Client"])
+    # Redundant variable assignment make the calls to this reference shorter
+    server_dict = app.config["server_dict"]
+
+    # save peer id and names
+    replica_names, replica_ids = zip(*get_replicas(server_dict, "Order"))
+    app.config["peer_ids"] = list(replica_ids)
+    app.config["peer_names"] = list(replica_names)
+
+    app.config["order_ip"], app.config["order_port"] = get_id_port(server_dict, "Order", app.config.get("id"))
+    app.config["catalog_name"] = "Catalog_" + app.config["id"]
+    app.config["catalog_address"] = get_root_url(server_dict,app.config["catalog_name"])
 
 ######################################################
 ################ Setup REST resources ################
@@ -218,7 +299,6 @@ class Write(Resource):
         order = create_order(int(order_id),float(processing_time),is_successful,int(catalog_id),title)
         write_order(order)
 
-
 # OrderList
 # shows a list of all orders
 class OrderList(Resource):
@@ -228,9 +308,20 @@ class OrderList(Resource):
     
     def delete(self):
         reset_orders()
-        # reset orders in replica
-        orders = get_orders_as_dict()
-        return jsonify(orders)
+
+
+class Download(Resource):
+    def get(self,filename):
+        file_data = codecs.open(filename, 'rb').read()
+        response = make_response()
+        response.data = file_data
+        return response
+
+class DBCheck(Resource):
+    def get(self):
+        return db_check()
+
+
 
 class Download(Resource):
     def get(self,filename):
@@ -250,61 +341,18 @@ api.add_resource(OrderList, '/orders')
 api.add_resource(Buy, '/buy/<catalog_id>')
 api.add_resource(Write, '/write/<order_id>/<processing_time>/<is_successful>/<catalog_id>/<title>')
 api.add_resource(Notify, '/notify/<primary_name>')
+api.add_resource(Download, '/download/<filename>')
+api.add_resource(DBCheck,'/check')
 
 
 if __name__ == '__main__':
+    startup_config()
+    # Assume primary is Order_0 on startup, notify others
+    app.config["primary"] = "Order_0"
+    notify_all()
 
-    #######################################################
-    ############### Accessing Catalog server  #############
-    #######################################################
-
-
-    def get_address(address_dict):
-        IP = address_dict['IP']
-        port = address_dict['Port']
-        address = 'http://' + IP + ':' + port
-        return address
-
-    with open(SERVER_CONFIG, mode ='r') as server_file:
-        server_dict = {}
-        csv_reader = csv.DictReader(server_file)
-        for row in csv_reader:
-            server_name = row['Server']
-            server_dict[server_name] = {'Machine': row['Machine'],
-                                        'IP': row['IP'],
-                                        'Port': row['Port'],
-                                        'Replica_ID': row['Replica_num']}
-        
-        catalog_dict_0 = server_dict['Catalog_0']
-        catalog_address_0 = get_address(catalog_dict_0)
-        catalog_dict_1 = server_dict['Catalog_1']
-        catalog_address_1 = get_address(catalog_dict_1)
-        ORDER_PORT_0 = server_dict['Order_0']['Port']
-        ORDER_PORT_1 = server_dict['Order_1']['Port']
-        CATALOG_ADDRESS = catalog_address_0
-
-    # reset the order DB when starting the flask app
-    
-    # config variables
-    app.config["id"] = sys.argv[1]
-    app.config["name"] = "Order_" + app.config["id"]
-    app.config["order_db"] = "order_" + app.config["id"] + "_db.txt"
-    app.config["server_dict"] = get_server_dict("server_config", ["Client"])
-    # Redundant variable assignment make the calls to this reference shorter
-    server_dict = app.config["server_dict"]
-    replica_names, replica_ids = zip(*get_replicas(server_dict, "Order"))
-    app.config["peer_ids"] = list(replica_ids)
-    # Assume a primary, if the assumed primary isn't in fact running, another
-    # primary will be elected later on
-    app.config["primary"] = "Order_" + str(max(app.config["peer_ids"]))
-    app.config["peer_names"] = list(replica_names)
-    order_ip, order_port = get_id_port(server_dict, "Order", app.config.get("id"))
-    app.config["catalog_name"] = "Catalog_" + app.config["id"]
-
-    catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("id"))
-    app.config["catalog_name"] = "Catalog_" + app.config["id"]
-    app.config["catalog_address"] = get_root_url(server_dict,app.config["catalog_name"])
+    server_dict = app.config.get("server_dict")
     sync_up(server_dict, list(get_replicas(server_dict, "Order")))
     with ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(app.run, host=order_ip, port=order_port)
+        executor.submit(app.run, host=app.config.get("order_ip"), port=app.config.get("order_port"))
 

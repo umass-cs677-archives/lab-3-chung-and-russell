@@ -82,8 +82,17 @@ def query_catalog_server(catalog_id):
         quantity = int(item_dict['QUANTITY'])
         return quantity,title
     except requests.exceptions.ConnectionError:
-        # server must have been down
-        print("Failed to notify ", server_name, " the election result.")
+        # server must have been down, change my catalog address
+        print("Catalog server replica down, trying another one")
+        catalog_id = app.config.get("catalog_name").split("_")[1]
+        if catalog_id == '0':
+            new_id = '1'
+        else:
+            new_id = '0'
+        app.config["catalog_name"] = "Catalog_" + new_id
+        app.config["catalog_address"] = get_root_url(server_dict,app.config["catalog_name"])
+        return query_catalog_server(catalog_id)
+
         
 
 

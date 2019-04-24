@@ -123,12 +123,11 @@ def buy(catalog_id):
     query = string_builder([], order_server_location, "/buy/", catalog_id)
     try:
         response = requests.get(query).json()
-        print(response)
-        if response["is successful"]:
+        if response["is_successful"]:
             return "bought book '" + response["title"] + "'\n"
         return "failed to buy book '" + response["title"] + "'\n"
     except requests.exceptions.ConnectionError:
-        return buy(topic)
+        return buy(catalog_id)
 
 
 if __name__ == "__main__":

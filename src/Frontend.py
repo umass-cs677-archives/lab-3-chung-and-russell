@@ -74,16 +74,16 @@ def search(topic: str) -> str:
         return search_result
 
     except requests.exceptions.ConnectionError:
-        if server_name in catalog_replica_names:
-            catalog_replica_names.remove(server_name)
+        # if server_name in catalog_replica_names:
+        #     catalog_replica_names.remove(server_name)
         return search(topic)
 
 
 @app.route("/lookup/<item_number>")
 def lookup(item_number):
-    # if item_number in cache:
-    #     print("cache hit")
-    #     return cache[item_number]
+    if item_number in cache:
+        print("cache hit")
+        return cache[item_number]
     catalog_server_location, server_name = get_server_location(catalog_replica_names)
     query = string_builder([], catalog_server_location, "/query/", item_number)
 
@@ -108,8 +108,8 @@ def lookup(item_number):
         return search_result
 
     except requests.exceptions.ConnectionError:
-        if server_name in catalog_replica_names:
-            catalog_replica_names.remove(server_name)
+        # if server_name in catalog_replica_names:
+        #     catalog_replica_names.remove(server_name)
         return lookup(item_number)
 #
 #

@@ -2,11 +2,13 @@ from flask import Flask
 from flask import jsonify
 from flask_restful import reqparse, abort, Api, Resource
 from utils import *
+from concurrent.futures import ThreadPoolExecutor
 import csv
 import random
 import time
 import requests
 import sys
+from threading import Lock
 
 app = Flask(__name__)
 api = Api(app)
@@ -16,8 +18,7 @@ SERVER_CONFIG = 'server_config'
 
 PERIODIC_UPDATE = False
 
-
-
+lock = Lock()
 #######################################################
 #### Helper functions for read/writing to order DB ####
 #######################################################
@@ -71,7 +72,7 @@ parser.add_argument('catalog_id', type = int, help = 'Catalog ID for item to buy
 
 # queries the catalog server, returns the quantity and title of the item
 def query_catalog_server(catalog_id):
-    r = requests.get(CATALOG_ADDRESS + '/query/' + catalog_id)
+    r = requests.get(app.config.get("catalog_address") + 'query/' + catalog_id)
     query_result = r.json()
     # querying by ID gives a json of type {title:{'COST':value, 'QUANTITY':value}}
     title = list(query_result.keys())[0]
@@ -82,7 +83,7 @@ def query_catalog_server(catalog_id):
 
 # decrements the catalog server, returns the new quantity 
 def decrement_catalog_server(catalog_id):
-    r = requests.get(CATALOG_ADDRESS + '/update/' + catalog_id + '/quantity/decrease/1')
+    r = requests.put(app.config.get("catalog_address") + 'update/' + catalog_id + '/quantity/decrease/1')
     decrement_result = r.json()
     # updating by quantity gives a json of type {title:{'COST':value, 'QUANTITY':value}}
     item_dict = list(decrement_result.values())[0]
@@ -92,23 +93,43 @@ def decrement_catalog_server(catalog_id):
     return quantity
 
 def restock_catalog_server(catalog_id):
-    r = requests.get(CATALOG_ADDRESS + '/update/' + catalog_id + '/quantity/increase/300')
+    r = requests.put(app.config.get("catalog_address") + 'update/' + catalog_id + '/quantity/increase/300')
 
-def forward(query, server_name):
+def forward(query, server_name, is_get = True):
     """
     Forward the query for the specified server to execute
     """
     root_url = get_root_url(app.config.get("server_dict"), server_name)
     forward_query = string_builder([root_url], query)
     try:
-        r = requests.put(forward_query)
-        return r.text
+        if is_get:
+            r = requests.get(forward_query)
+            return r
+        else:
+            r = requests.put(forward_query)
+            return r
+
     except requests.exceptions.ConnectionError:
         # Primary server is down, holds an election and forwards the
         # request to the new primary
         print("primary server down")
         #hold_election()
         return forward(query, app.config.get("primary"))
+
+def sync_all(query):
+    """
+    Synchronize other non-primary servers
+    """
+    for peer_name in app.config.get("peer_names"):
+        # No need to sync up with itself
+        if peer_name != app.config.get("name"):
+            root_url = get_root_url(app.config.get("server_dict"), peer_name)
+            sync_query = string_builder([root_url], query)
+            try:
+                r = requests.post(sync_query)
+            except requests.exceptions.ConnectionError:
+                app.config.get("peer_names").remove(peer_name)
+                print(peer_name + " is down")
 
 ######################################################
 ################ Setup REST resources ################
@@ -120,39 +141,45 @@ def forward(query, server_name):
 class Buy(Resource):
     order = {}
     def get(self, catalog_id):
-        start = time.time()
-        stock,title = query_catalog_server(catalog_id)
-        processing_time = time.time() - start
-        if stock <= 0:
-            # done querying the catalog server, add an order to the order DB
-            order_id = get_num_orders() + 1
-            is_successful = False
-            if PERIODIC_UPDATE:
-                restock_catalog_server(catalog_id)
-
-        else:
-            #decrement stock by 1
-            newstock = decrement_catalog_server(catalog_id)
-            is_successful = True
-            order_id = get_num_orders() + 1
-            stockChange = stock - newstock
-            if stockChange != 1:
-                if newstock < 0:
-                    errorString = ", stock is now " + str(newstock)
-                else:
-                    errorString = " ,  " + str(stockChange) + " other clients bought items in between query and update"
-                print("Bought '"+ title + "' , stock erroneously changed by " + str(stockChange))
-                title = title + errorString
-        order = create_order(order_id,processing_time,is_successful,catalog_id,title)
-        # Not the primary replica, forward the write request
-        if app.config.get("primary") != app.config.get("name") and "sync" not in request.path:
-            order_string = package_order_into_string([str(order_id),str(processing_time),str(is_successful),catalog_id,title])
-            query = string_builder([], "write/", order_string)
+        # not the primary replica, forward request to primary
+        if app.config.get("primary") != app.config.get("name") :
+            #order_string = package_order_into_string([str(order_id),str(processing_time),str(is_successful),catalog_id,title])
+            query = string_builder([], "buy/", catalog_id)
             r = forward(query, app.config.get("primary"))
-            return r
-        write_order(order)
-        
-        return jsonify(order)
+            return r.json()
+        # executed by primary replica
+        else:
+            with lock:
+                start = time.time()
+                stock,title = query_catalog_server(catalog_id)
+                processing_time = time.time() - start
+                if stock <= 0:
+                    # done querying the catalog server, add an order to the order DB
+                    order_id = get_num_orders() + 1
+                    is_successful = False
+                    if PERIODIC_UPDATE:
+                        restock_catalog_server(catalog_id)
+
+                else:
+                    #decrement stock by 1
+                    newstock = decrement_catalog_server(catalog_id)
+                    is_successful = True
+                    order_id = get_num_orders() + 1
+                    stockChange = stock - newstock
+                    if stockChange != 1:
+                        if newstock < 0:
+                            errorString = ", stock is now " + str(newstock)
+                        else:
+                            errorString = " ,  " + str(stockChange) + " other clients bought items in between query and update"
+                        print("Bought '"+ title + "' , stock erroneously changed by " + str(stockChange))
+                        title = title
+                order = create_order(order_id,processing_time,is_successful,catalog_id,title)
+                # Need to block on write until the replicas are notified
+                executor = ThreadPoolExecutor(max_workers=2)
+                write_order(order)
+                query = string_builder([], "write/", str(order_id), "/", str(processing_time), "/", str(is_successful), "/", str(catalog_id),"/",str(title))
+                executor.submit(sync_all, query)
+                return jsonify(order)
 
 class Notify(Resource):
     def get(self, primary_name):
@@ -162,13 +189,12 @@ class Notify(Resource):
         app.config["primary"] = primary_name
         return(primary_name+ " is the new primary")
     
-
-# 
 class Write(Resource):
-    def get(self, order_string):
-        order = unpack_string_into_order(order_string)
+    def post(self, order_id,processing_time,is_successful,catalog_id,title):
+        # need to convert strings to proper formats
+        is_successful = (is_successful== "True")
+        order = create_order(int(order_id),float(processing_time),is_successful,int(catalog_id),title)
         write_order(order)
-        return jsonify(order)
 
 
 # OrderList
@@ -176,7 +202,7 @@ class Write(Resource):
 class OrderList(Resource):
     def get(self):
         orders = get_orders_as_dict()
-        return jsonify(orders)
+        return orders
     
     def delete(self):
         reset_orders()
@@ -184,12 +210,13 @@ class OrderList(Resource):
         orders = get_orders_as_dict()
         return jsonify(orders)
 
+
 ##
 ## setup the Api resource routing here
 ##
 api.add_resource(OrderList, '/orders')
 api.add_resource(Buy, '/buy/<catalog_id>')
-api.add_resource(Write, '/write/<order_string>')
+api.add_resource(Write, '/write/<order_id>/<processing_time>/<is_successful>/<catalog_id>/<title>')
 api.add_resource(Notify, '/notify/<primary_name>')
 
 
@@ -225,13 +252,11 @@ if __name__ == '__main__':
         CATALOG_ADDRESS = catalog_address_0
 
     # reset the order DB when starting the flask app
-    reset_orders()
+    
     # config variables
     app.config["id"] = sys.argv[1]
     app.config["name"] = "Order_" + app.config["id"]
     app.config["order_db"] = "order_" + app.config["id"] + "_db.txt"
-
-
     app.config["server_dict"] = get_server_dict("server_config", ["Client"])
     # Redundant variable assignment make the calls to this reference shorter
     server_dict = app.config["server_dict"]
@@ -243,7 +268,12 @@ if __name__ == '__main__':
     app.config["peer_names"] = list(replica_names)
     order_ip, order_port = get_id_port(server_dict, "Order", app.config.get("id"))
     app.config["catalog_name"] = "Catalog_" + app.config["id"]
-    app.config["catalog_address"] = get_address(server_dict[app.config["catalog_name"]])
-    app.run(host = order_ip, port = order_port)
-    print("app is running??")
+
+    catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("id"))
+    app.config["catalog_name"] = "Catalog_" + app.config["id"]
+    app.config["catalog_address"] = get_root_url(server_dict,app.config["catalog_name"])
+
+    reset_orders()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(app.run, host=order_ip, port=order_port)
 

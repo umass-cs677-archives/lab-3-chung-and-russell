@@ -9,6 +9,7 @@ import time
 import requests
 import sys
 from threading import Lock
+import codecs
 
 app = Flask(__name__)
 api = Api(app)
@@ -116,6 +117,27 @@ def forward(query, server_name, is_get = True):
         #hold_election()
         return forward(query, app.config.get("primary"))
 
+
+def sync_up(server_dict, peer_name_ids):
+    """
+    sync up with the first available server
+    """
+    for peer_name_id in peer_name_ids:
+        if peer_name_id[0] != app.config.get("name"):
+            peer_root_url = get_root_url(server_dict, peer_name_id[0])
+            try:
+                download_query = string_builder([peer_root_url], "download/", "inventory_",  peer_name_id[1], ".db")
+                r = requests.get(download_query)
+                target_db = string_builder(["inventory_"], app.config["id"], ".db")
+                with open(target_db, "wb") as db:
+                    db.write(r.content)
+                print(app.config.get("name"),string_builder([], "sync up with replica", peer_name_id[1]))
+                return
+            except requests.exceptions.ConnectionError:
+                print(peer_name_id[0], " not running")
+    print("No other running servers, " + app.config.get("name") +" is resetting")
+    reset_orders()
+
 def sync_all(query):
     """
     Synchronize other non-primary servers
@@ -210,6 +232,16 @@ class OrderList(Resource):
         orders = get_orders_as_dict()
         return jsonify(orders)
 
+class Download(Resource):
+    def get(self,filename):
+        file_data = codecs.open(file_name, 'rb').read()
+        response = make_response()
+        response.data = file_data
+        return response
+
+
+
+
 
 ##
 ## setup the Api resource routing here
@@ -272,8 +304,7 @@ if __name__ == '__main__':
     catalog_ip, catalog_port = get_id_port(server_dict, "Catalog", app.config.get("id"))
     app.config["catalog_name"] = "Catalog_" + app.config["id"]
     app.config["catalog_address"] = get_root_url(server_dict,app.config["catalog_name"])
-
-    reset_orders()
+    sync_up(server_dict, list(get_replicas(server_dict, "Order")))
     with ThreadPoolExecutor(max_workers=2) as executor:
         executor.submit(app.run, host=order_ip, port=order_port)
 

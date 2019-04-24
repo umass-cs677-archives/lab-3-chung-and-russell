@@ -2,8 +2,9 @@ import csv
 import requests
 import time
 import sys
-
-FRONTEND_ADDRESS = 'http://128.119.243.168:5003'
+from utils import *
+server_dict= get_server_dict("server_config", ["Order", "Client","Catalog"])
+FRONTEND_ADDRESS = get_root_url(server_dict, "Frontend")
 
 
 def search(topic, print_output = True):

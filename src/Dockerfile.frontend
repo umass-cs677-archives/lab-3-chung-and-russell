@@ -2,15 +2,13 @@ FROM ubuntu:16.04
 
 WORKDIR /lab3
 
-ADD Catalog.py /lab3
+ADD Frontend.py /lab3
 ADD requirements.txt /lab3
 ADD inventory.sql /lab3
 ADD utils.py /lab3
 ADD server_config /lab3
 
-RUN apt update && apt install -y sqlite3 \
-  && apt-get install -y emacs \
-  && apt-get install -y python3-pip python3-dev \
+RUN apt update && apt-get install -y python3-pip python3-dev \
   && cd /usr/local/bin \
   && ln -s /usr/bin/python3 python
 
@@ -18,8 +16,3 @@ RUN pip3 install -r requirements.txt
 
 RUN pip3 install  requests
 
-ARG id
-
-ENV id=${id}
-
-RUN sqlite3 inventory_${id}.db < inventory.sql

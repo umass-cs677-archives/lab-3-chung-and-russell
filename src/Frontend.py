@@ -82,6 +82,7 @@ def search(topic: str) -> str:
     except requests.exceptions.ConnectionError:
         # if server_name in catalog_replica_names:
         #     catalog_replica_names.remove(server_name)
+        print("Chosen replica not responding, retrying random replica")
         return search(topic)
 
 
@@ -116,6 +117,7 @@ def lookup(item_number):
     except requests.exceptions.ConnectionError:
         # if server_name in catalog_replica_names:
         #     catalog_replica_names.remove(server_name)
+        print("Chosen replica not responding, retrying random replica")
         return lookup(item_number)
 #
 #
@@ -129,6 +131,7 @@ def buy(catalog_id):
             return "bought book '" + response["title"] + "'\n"
         return "failed to buy book '" + response["title"] + "'\n"
     except requests.exceptions.ConnectionError:
+        print("Chosen replica not responding, retrying random replica")
         return buy(catalog_id)
 
 

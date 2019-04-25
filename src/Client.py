@@ -8,19 +8,19 @@ FRONTEND_ADDRESS = get_root_url(server_dict, "Frontend")
 
 
 def search(topic, print_output = True):
-    search_result = requests.get(FRONTEND_ADDRESS + '/search/' + topic).text
+    search_result = requests.get(FRONTEND_ADDRESS + 'search/' + topic).text
     if print_output:
         print(search_result)
     return search_result
 
 def lookup(item_number, print_output = True):
-    lookup_result = requests.get(FRONTEND_ADDRESS + '/lookup/' + str(item_number)).text
+    lookup_result = requests.get(FRONTEND_ADDRESS + 'lookup/' + str(item_number)).text
     if print_output:
         print(lookup_result)
     return lookup_result
 
 def buy(catalog_id, print_output = True):
-    buy_result = requests.get(FRONTEND_ADDRESS + '/buy/' + str(catalog_id)).text
+    buy_result = requests.get(FRONTEND_ADDRESS + 'buy/' + str(catalog_id)).text
     if print_output:
         print(buy_result)
     return buy_result
@@ -36,7 +36,7 @@ def sequential_query(query_fun, query_arg, iterations, write_file, client_name =
         output = query_fun(query_arg,print_output = False)
         runtime = time.time() - start
         total_runtime = total_runtime + runtime
-    print('Average runtime is ' ) + str(1.0*total_runtime/iterations)
+    print('Average runtime is '  + str(1.0*total_runtime/iterations))
 
 
 

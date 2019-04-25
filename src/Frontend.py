@@ -58,7 +58,7 @@ def invalidate(entry_key):
 @app.route("/search/<topic>", methods=["GET"])
 def search(topic: str) -> str:
     if topic in cache:
-        print("cache hit")
+        #print("cache hit")
         return cache[topic]
 
     catalog_server_location, server_name = get_server_location(catalog_replica_names)

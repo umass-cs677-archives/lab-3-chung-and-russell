@@ -1,0 +1,7 @@
+Server,Machine,IP,Port,Replica_num
+Order_0,elnux1,128.119.243.147,6001,0
+Order_1,elnux2,128.119.243.164,6005,1
+Catalog_0,elnux2,128.119.243.164,6002,0
+Catalog_1,elnux1,128.119.243.147,6006,1
+Frontend,elnux3,128.119.243.168,6003,0
+Client,elnux7,128.119.243.175,6004,0

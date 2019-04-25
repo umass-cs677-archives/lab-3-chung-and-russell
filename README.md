@@ -8,7 +8,7 @@ Docker containers:
 4. Run docker network create 677network. This operation is neccessary because a docker container that's running on default Bridge network doesn't benefit for docker's internal DNS lookup. We obeserved that it takes a long time for default bridge netowrk to resolve an IP and therefore every HTTP request is extrememly slow <br />
 
 4. To run each component <br />
-  *Note: Before executing python script to actually launch the server, run docker_setup.sh first. This script retrieves the subnet IP for each running container and updates server_config for all of them so they can actually talk to each ohter. <br />
+  *Note: Before executing python script to actually launch the server, run docker_setup.sh first. This script retrieves the subnet IP for each running container and updates server_config for all of them so they can actually talk to each ohter. If a container is stopped and restart, it might get assigned a different IP so you have to restart each container as the same order as you stop them when you testing for fault tolerance.<br />
   
   Catalog_0: <br />
     docker run --name catalog_0 --net=677network -i -t -p 6001:6001 catalog:0 <br />

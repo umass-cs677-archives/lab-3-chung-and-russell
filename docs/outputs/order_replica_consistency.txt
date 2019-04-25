@@ -1,0 +1,6 @@
+Make sure servers are up and running first
+"Database synced with peer!"
+"Database synced with peer!"
+can manually check each order DB for order consistency
+http://128.119.243.164:6005/orders
+http://128.119.243.147:6001/orders

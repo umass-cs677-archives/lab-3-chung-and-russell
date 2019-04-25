@@ -1,0 +1,93 @@
+Testing same basic functionalities from lab 2
+Name: How to get a good grade in 677 in 20 minutes a day
+Cost: 120.0
+Quantity: 268
+
+Buying first item 5 times
+bought book 'How to get a good grade in 677 in 20 minutes a day'
+
+bought book 'How to get a good grade in 677 in 20 minutes a day'
+
+bought book 'How to get a good grade in 677 in 20 minutes a day'
+
+bought book 'How to get a good grade in 677 in 20 minutes a day'
+
+bought book 'How to get a good grade in 677 in 20 minutes a day'
+
+Looking up final stock of first item
+Name: How to get a good grade in 677 in 20 minutes a day
+Cost: 120.0
+Quantity: 263
+
+Name: RPCs for Dummies
+Cost: 160.0
+Quantity: 0
+
+Buying second item 5 times
+failed to buy book 'RPCs for Dummies'
+
+failed to buy book 'RPCs for Dummies'
+
+failed to buy book 'RPCs for Dummies'
+
+failed to buy book 'RPCs for Dummies'
+
+failed to buy book 'RPCs for Dummies'
+
+Looking up final stock of second item
+Name: RPCs for Dummies
+Cost: 160.0
+Quantity: 0
+
+Name: Xen and the Art of Surviving Graduate School
+Cost: 155.0
+Quantity: 0
+
+Buying third item 5 times, starting at stock 4
+failed to buy book 'Xen and the Art of Surviving Graduate School'
+
+failed to buy book 'Xen and the Art of Surviving Graduate School'
+
+failed to buy book 'Xen and the Art of Surviving Graduate School'
+
+failed to buy book 'Xen and the Art of Surviving Graduate School'
+
+failed to buy book 'Xen and the Art of Surviving Graduate School'
+
+Looking up final stock of third item
+Name: Xen and the Art of Surviving Graduate School
+Cost: 155.0
+Quantity: 0
+
+Name: Why theory classes are so hard
+Cost: 200.0
+Quantity: 40
+
+Buying sixth item 5 times, starting at stock 3
+bought book 'Why theory classes are so hard'
+
+bought book 'Why theory classes are so hard'
+
+bought book 'Why theory classes are so hard'
+
+bought book 'Why theory classes are so hard'
+
+bought book 'Why theory classes are so hard'
+
+Looking up final stock of fourth item
+Name: Why theory classes are so hard
+Cost: 200.0
+Quantity: 35
+
+Searching topic graduate_school
+Name: Why theory classes are so hard Item ID: 6
+Name: Xen and the Art of Surviving Graduate School Item ID: 3
+Name: Spring in the Pioneer Valley Item ID: 5
+Name: Cooking for the Impatient Graduate Student Item ID: 4
+
+Searching topic distributed_systems
+Name: How to finish Project 3 on time Item ID: 7
+Name: RPCs for Dummies Item ID: 2
+Name: How to get a good grade in 677 in 20 minutes a day Item ID: 1
+
+Done testing basic client operations!

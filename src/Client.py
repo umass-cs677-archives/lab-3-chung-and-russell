@@ -31,16 +31,12 @@ def sequential_query(query_fun, query_arg, iterations, write_file, client_name =
         printed_file = open(write_file + '_' + 'printed.txt','w')
 
     total_runtime = 0
-    with open(write_file + '.txt','w') as output_file:
-        for i in range(iterations):
-            start = time.time()
-            output = query_fun(query_arg,print_output = False)
-            runtime = time.time() - start
-            total_runtime = total_runtime + runtime
-            if len(client_name) > 0 :
-                printed_file.write(client_name + ' ' + output + '\n')
-            output_file.write(str(runtime)+ '\n')
-        print('Average runtime is ' ) + str(1.0*total_runtime/iterations)
+    for i in range(iterations):
+        start = time.time()
+        output = query_fun(query_arg,print_output = False)
+        runtime = time.time() - start
+        total_runtime = total_runtime + runtime
+    print('Average runtime is ' ) + str(1.0*total_runtime/iterations)
 
 
 
